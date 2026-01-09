@@ -42,8 +42,9 @@ export function joinActiveRevendedores(
   // Process each active revendedor
   for (const active of activeRevendedores) {
     // Filter by ciclo if selected
-    if (selectedCiclo && active.cicloCaptacao && active.cicloCaptacao !== selectedCiclo) {
-      // Skip if ciclo doesn't match (only if active file has ciclo column)
+    // Se um ciclo está selecionado, só inclui ativos que têm exatamente esse ciclo
+    // Ativos sem ciclo (null) ou com ciclo diferente são excluídos
+    if (selectedCiclo && active.cicloCaptacao !== selectedCiclo) {
       continue;
     }
 
