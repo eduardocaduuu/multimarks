@@ -77,7 +77,7 @@ export function processAllBrands(
     });
   }
 
-  // Process all brands
+  // Process all brands - only consider "Venda" type items
   for (const brandId of BRAND_ORDER) {
     const items = brandItems.get(brandId);
     if (!items || items.length === 0) continue;
@@ -85,6 +85,9 @@ export function processAllBrands(
     for (const item of items) {
       // Skip if not in base (O Boticário)
       if (!baseCustomerNames.has(item.nomeRevendedoraNormalized)) continue;
+
+      // Skip Brinde and Doação - only count Venda
+      if (item.tipo !== 'Venda') continue;
 
       const customer = customerData.get(item.nomeRevendedoraNormalized)!;
 
@@ -108,11 +111,9 @@ export function processAllBrands(
       // Add item
       brandMetrics.items.push(item);
 
-      // Update metrics only for Venda type
-      if (item.tipo === 'Venda') {
-        brandMetrics.totalItensVenda += item.quantidadeItens;
-        brandMetrics.totalValorVenda += item.valorPraticado;
-      }
+      // Update metrics
+      brandMetrics.totalItensVenda += item.quantidadeItens;
+      brandMetrics.totalValorVenda += item.valorPraticado;
 
       // Track unique values
       brandMetrics.ciclos.add(item.cicloCaptacao);
