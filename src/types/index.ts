@@ -191,4 +191,101 @@ export interface ProcessingResult {
   availableSetores: string[];
   availableMeiosCaptacao: string[];
   availableTiposEntrega: DeliveryType[];
+  // Active revendedores data (optional - only if active file is uploaded)
+  activeRevendedoresData?: {
+    activeRevendedores: ActiveRevendedorJoined[];
+    sectorStats: SectorActiveStats[];
+    selectedCiclo: string | null; // Selected ciclo for filtering
+    availableCiclosFromActive: string[]; // Ciclos available in active file
+    totalAtivos: number;
+    totalAtivosBaseBoticario: number;
+    totalCrossbuyersAtivos: number;
+    inconsistencies: string[]; // Global inconsistencies
+  };
 }
+
+// ===== ACTIVE REVENDEDORES FILE TYPES =====
+
+// Active revendedor from the single active revendedores spreadsheet
+export interface ActiveRevendedorData {
+  codigoRevendedora: string; // Normalized as string (key)
+  codigoRevendedoraOriginal: string; // Original value
+  nomeRevendedora: string; // Display name
+  nomeRevendedoraNormalized: string; // For comparison (lowercase, trimmed, no accents)
+  setor: string;
+  cicloCaptacao: string | null; // Optional - may not exist in the file
+}
+
+// Active revendedor after joining with brand purchases
+export interface ActiveRevendedorJoined {
+  // From active file
+  codigoRevendedora: string;
+  codigoRevendedoraOriginal: string;
+  nomeRevendedora: string;
+  nomeRevendedoraNormalized: string;
+  setor: string; // From active file (authoritative)
+  cicloCaptacao: string | null;
+  
+  // From brand purchases (filtered by selected ciclo)
+  brands: Map<BrandId, CustomerBrandMetrics>;
+  brandCount: number;
+  
+  // Aggregated metrics (only Venda type)
+  totalValorVendaAllBrands: number; // In cents
+  totalItensVendaAllBrands: number;
+  
+  // Flags
+  existsInBoticario: boolean; // Must exist in oBoticário to be valid
+  hasPurchasesInCiclo: boolean; // Has purchases in selected ciclo
+  isCrossbuyer: boolean; // Has 2+ brands
+  
+  // Inconsistencies
+  inconsistencies: string[]; // e.g., "Setor divergente", "Sem compras no ciclo"
+}
+
+// Sector statistics for active revendedores
+export interface SectorActiveStats {
+  setor: string;
+  totalAtivos: number; // Total active revendedores in this sector
+  ativosBaseBoticario: number; // Active revendedores that exist in oBoticário
+  crossbuyers: number; // Active crossbuyers in this sector
+  percentCrossbuyer: number; // Percentage of crossbuyers
+  
+  // Value and items by brand
+  valorPorMarca: Record<BrandId, number>; // In cents
+  itensPorMarca: Record<BrandId, number>;
+  
+  // List of active revendedores in this sector
+  activeRevendedores: ActiveRevendedorJoined[];
+}
+
+// Upload state for active revendedores file
+export interface ActiveRevendedoresUploadState {
+  file: File | null;
+  fileName: string | null;
+  status: 'empty' | 'loading' | 'loaded' | 'error';
+  error: string | null;
+  rowCount: number;
+  hasCicloColumn: boolean; // Whether the file has ciclo column
+}
+
+// Column mapping for active revendedores spreadsheet
+export interface ActiveRevendedoresColumnMapping {
+  codigoRevendedora: string | null;
+  nomeRevendedora: string | null;
+  setor: string | null;
+  cicloCaptacao: string | null;
+}
+
+// Parsing result for active revendedores file
+export interface ActiveRevendedoresParseResult {
+  success: boolean;
+  activeRevendedores: ActiveRevendedorData[];
+  errors: string[];
+  warnings: string[];
+  rowCount: number;
+  hasCicloColumn: boolean;
+}
+
+// Re-export sector activity types
+export * from './sectorActivity';

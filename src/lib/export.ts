@@ -1,5 +1,5 @@
 import * as XLSX from 'xlsx';
-import { Customer, BrandId, BRANDS, BRAND_ORDER } from '@/types';
+import { Customer, BrandId, BRANDS, BRAND_ORDER, ActiveRevendedorJoined, SectorActiveStats } from '@/types';
 import { formatNumber } from './utils';
 
 /**
@@ -291,4 +291,136 @@ export function exportCrossBuyersXLSX(customers: Customer[]) {
     type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
   });
   downloadFile(blob, 'crossbuyers_relatorio.xlsx', '');
+}
+
+/**
+ * Export active revendedores as CSV
+ */
+export function exportActiveRevendedoresCSV(activeRevendedores: ActiveRevendedorJoined[]) {
+  const headers = [
+    'Setor',
+    'CodigoRevendedora',
+    'NomeRevendedora',
+    'Ciclo',
+    'Marcas',
+    'ÉCrossbuyer',
+    'BaseOBoticario',
+    'ItensVenda',
+    'ValorVenda',
+    'Inconsistencias',
+  ];
+
+  const rows: string[][] = activeRevendedores.map((active) => {
+    const marcas = Array.from(active.brands.keys())
+      .map(b => BRANDS[b].shortName)
+      .join('; ');
+
+    const inconsistências = active.inconsistencies.join(' | ');
+
+    return [
+      active.setor,
+      active.codigoRevendedoraOriginal || active.codigoRevendedora,
+      active.nomeRevendedora,
+      active.cicloCaptacao || '',
+      marcas || '',
+      active.isCrossbuyer ? 'Sim' : 'Não',
+      active.existsInBoticario ? 'Sim' : 'Não',
+      active.totalItensVendaAllBrands.toString(),
+      formatNumber(active.totalValorVendaAllBrands),
+      inconsistências || '',
+    ];
+  });
+
+  const csv = generateCSV(headers, rows);
+  downloadFile(csv, 'revendedores_ativos.csv', 'text/csv;charset=utf-8');
+}
+
+/**
+ * Export active revendedores by sector as CSV
+ */
+export function exportAtivosPorSetorCSV(sectorStats: SectorActiveStats[]) {
+  const headers = [
+    'Setor',
+    'TotalAtivos',
+    'AtivosBaseOBoticario',
+    'Crossbuyers',
+    'PercentualCrossbuyer',
+    'ValorTotal',
+    'ItensTotal',
+    ...BRAND_ORDER.map(b => `${BRANDS[b].shortName} (Valor)`),
+    ...BRAND_ORDER.map(b => `${BRANDS[b].shortName} (Itens)`),
+  ];
+
+  const rows: string[][] = sectorStats.map((sector) => {
+    const brandValues = BRAND_ORDER.map(brandId => formatNumber(sector.valorPorMarca[brandId] || 0));
+    const brandItems = BRAND_ORDER.map(brandId => (sector.itensPorMarca[brandId] || 0).toString());
+    const valorTotal = Object.values(sector.valorPorMarca).reduce((sum, v) => sum + v, 0);
+    const itensTotal = Object.values(sector.itensPorMarca).reduce((sum, v) => sum + v, 0);
+
+    return [
+      sector.setor,
+      sector.totalAtivos.toString(),
+      sector.ativosBaseBoticario.toString(),
+      sector.crossbuyers.toString(),
+      sector.percentCrossbuyer.toFixed(2) + '%',
+      formatNumber(valorTotal),
+      itensTotal.toString(),
+      ...brandValues,
+      ...brandItems,
+    ];
+  });
+
+  const csv = generateCSV(headers, rows);
+  downloadFile(csv, 'ativos_por_setor.csv', 'text/csv;charset=utf-8');
+}
+
+/**
+ * Export active crossbuyers as CSV
+ */
+export function exportCrossbuyersAtivosCSV(activeRevendedores: ActiveRevendedorJoined[]) {
+  // Filter only crossbuyers
+  const crossbuyers = activeRevendedores.filter(a => a.isCrossbuyer && a.existsInBoticario);
+
+  const headers = [
+    'Setor',
+    'CodigoRevendedora',
+    'NomeRevendedora',
+    'Ciclo',
+    'QtdMarcas',
+    ...BRAND_ORDER.map(b => `${BRANDS[b].shortName} (Valor)`),
+    ...BRAND_ORDER.map(b => `${BRANDS[b].shortName} (Itens)`),
+    'TotalValor',
+    'TotalItens',
+    'Inconsistencias',
+  ];
+
+  const rows: string[][] = crossbuyers.map((active) => {
+    const brandValues = BRAND_ORDER.map(brandId => {
+      const metrics = active.brands.get(brandId);
+      return metrics ? formatNumber(metrics.totalValorVenda) : '';
+    });
+
+    const brandItems = BRAND_ORDER.map(brandId => {
+      const metrics = active.brands.get(brandId);
+      return metrics ? metrics.totalItensVenda.toString() : '';
+    });
+
+    const inconsistências = active.inconsistencies.join(' | ');
+
+    return [
+      active.setor,
+      active.codigoRevendedoraOriginal || active.codigoRevendedora,
+      active.nomeRevendedora,
+      active.cicloCaptacao || '',
+      active.brandCount.toString(),
+      ...brandValues,
+      ...brandItems,
+      formatNumber(active.totalValorVendaAllBrands),
+      active.totalItensVendaAllBrands.toString(),
+      inconsistências || '',
+    ];
+  });
+
+  const csv = generateCSV(headers, rows);
+  downloadFile(csv, 'crossbuyers_ativos.csv', 'text/csv;charset=utf-8');
 }

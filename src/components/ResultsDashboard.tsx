@@ -17,14 +17,17 @@ import { SectorDistribution } from './SectorDistribution';
 import { FiltersPanel } from './FiltersPanel';
 import { ResultsTable } from './ResultsTable';
 import { CustomerDetailDialog } from './CustomerDetailDialog';
+import { AtivosNoCicloTab } from './AtivosNoCicloTab';
+import { RevendedoresAtivosTab } from './RevendedoresAtivosTab';
 import { Button } from '@/components/ui/button';
+import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { Download, FileSpreadsheet, FileText, ChevronDown } from 'lucide-react';
+import { Download, FileSpreadsheet, FileText, ChevronDown, Users, Building2, List } from 'lucide-react';
 
 interface ResultsDashboardProps {
   result: ProcessingResult;
@@ -155,6 +158,9 @@ export function ResultsDashboard({ result, onBack: _onBack }: ResultsDashboardPr
     exportCrossBuyersXLSX(sortedCustomers);
   }, [sortedCustomers]);
 
+  // Check if active revendedores data is available
+  const hasActiveRevendedores = result.activeRevendedoresData !== undefined;
+
   return (
     <div className="animate-fade-in">
       {/* Header */}
@@ -167,6 +173,9 @@ export function ResultsDashboard({ result, onBack: _onBack }: ResultsDashboardPr
           </h2>
           <p className="text-muted-foreground text-sm">
             {result.stats.crossBuyerCount.toLocaleString('pt-BR')} clientes compraram em 2 ou mais marcas
+            {hasActiveRevendedores && result.activeRevendedoresData && (
+              <> • {result.activeRevendedoresData.totalAtivos.toLocaleString('pt-BR')} revendedores ativos</>
+            )}
           </p>
         </div>
 
@@ -203,31 +212,94 @@ export function ResultsDashboard({ result, onBack: _onBack }: ResultsDashboardPr
       {/* Sector distribution */}
       <SectorDistribution stats={result.stats} />
 
-      {/* Filters */}
-      <FiltersPanel
-        filters={filters}
-        onFiltersChange={setFilters}
-        availableCiclos={result.availableCiclos}
-        availableSetores={result.availableSetores}
-        availableMeiosCaptacao={result.availableMeiosCaptacao}
-        availableTiposEntrega={result.availableTiposEntrega}
-      />
+      {/* Tabs */}
+      <Tabs defaultValue="crossbuyers" className="mt-8">
+        <TabsList className="grid w-full grid-cols-3 max-w-2xl">
+          <TabsTrigger value="crossbuyers" className="gap-2">
+            <Users className="w-4 h-4" />
+            Crossbuyers
+          </TabsTrigger>
+          {hasActiveRevendedores && (
+            <TabsTrigger value="ativos-ciclo" className="gap-2">
+              <Building2 className="w-4 h-4" />
+              Ativos no Ciclo
+            </TabsTrigger>
+          )}
+          {hasActiveRevendedores && (
+            <TabsTrigger value="ativos-lista" className="gap-2">
+              <List className="w-4 h-4" />
+              Revendedores Ativos
+            </TabsTrigger>
+          )}
+        </TabsList>
 
-      {/* Results count */}
-      <div className="flex items-center justify-between mb-4">
-        <p className="text-sm text-muted-foreground">
-          Mostrando {sortedCustomers.length.toLocaleString('pt-BR')} de{' '}
-          {result.crossBuyers.length.toLocaleString('pt-BR')} cross-buyers
-        </p>
-      </div>
+        {/* Tab 1: Crossbuyers (mantém como está) */}
+        <TabsContent value="crossbuyers" className="mt-6">
+          {/* Filters */}
+          <FiltersPanel
+            filters={filters}
+            onFiltersChange={setFilters}
+            availableCiclos={result.availableCiclos}
+            availableSetores={result.availableSetores}
+            availableMeiosCaptacao={result.availableMeiosCaptacao}
+            availableTiposEntrega={result.availableTiposEntrega}
+          />
 
-      {/* Results table */}
-      <ResultsTable
-        customers={sortedCustomers}
-        sort={sort}
-        onSortChange={setSort}
-        onCustomerClick={setSelectedCustomer}
-      />
+          {/* Results count */}
+          <div className="flex items-center justify-between mb-4 mt-4">
+            <p className="text-sm text-muted-foreground">
+              Mostrando {sortedCustomers.length.toLocaleString('pt-BR')} de{' '}
+              {result.crossBuyers.length.toLocaleString('pt-BR')} cross-buyers
+            </p>
+          </div>
+
+          {/* Results table */}
+          <ResultsTable
+            customers={sortedCustomers}
+            sort={sort}
+            onSortChange={setSort}
+            onCustomerClick={setSelectedCustomer}
+          />
+        </TabsContent>
+
+        {/* Tab 2: Ativos no Ciclo (NOVA) */}
+        {hasActiveRevendedores && result.activeRevendedoresData && (
+          <TabsContent value="ativos-ciclo" className="mt-6">
+            <AtivosNoCicloTab
+              sectorStats={result.activeRevendedoresData.sectorStats}
+              selectedCiclo={result.activeRevendedoresData.selectedCiclo}
+              onRevendedorClick={(active) => {
+                // Find customer by nome and open detail
+                const customer = result.customers.find(
+                  c => c.nomeRevendedoraNormalized === active.nomeRevendedoraNormalized
+                );
+                if (customer) {
+                  setSelectedCustomer(customer);
+                }
+              }}
+            />
+          </TabsContent>
+        )}
+
+        {/* Tab 3: Revendedores Ativos (NOVA) */}
+        {hasActiveRevendedores && result.activeRevendedoresData && (
+          <TabsContent value="ativos-lista" className="mt-6">
+            <RevendedoresAtivosTab
+              activeRevendedores={result.activeRevendedoresData.activeRevendedores}
+              selectedCiclo={result.activeRevendedoresData.selectedCiclo}
+              onRevendedorClick={(active) => {
+                // Find customer by nome and open detail
+                const customer = result.customers.find(
+                  c => c.nomeRevendedoraNormalized === active.nomeRevendedoraNormalized
+                );
+                if (customer) {
+                  setSelectedCustomer(customer);
+                }
+              }}
+            />
+          </TabsContent>
+        )}
+      </Tabs>
 
       {/* Customer detail dialog */}
       <CustomerDetailDialog

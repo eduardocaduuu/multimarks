@@ -5,13 +5,17 @@ import {
   ProcessingResult,
   BRAND_ORDER,
   DeliveryType,
+  ActiveRevendedorData,
 } from '@/types';
+import { joinActiveRevendedores, aggregateActiveRevendedoresBySector } from './joinActiveRevendedores';
 
 /**
  * Process items from all brands and generate cross-buyer analysis
  */
 export function processAllBrands(
-  brandItems: Map<BrandId, Item[]>
+  brandItems: Map<BrandId, Item[]>,
+  activeRevendedoresData?: ActiveRevendedorData[],
+  selectedCiclo?: string | null
 ): ProcessingResult {
   const result: ProcessingResult = {
     success: false,
@@ -220,6 +224,51 @@ export function processAllBrands(
   result.availableSetores = Array.from(allSetores).sort();
   result.availableMeiosCaptacao = Array.from(allMeiosCaptacao).sort();
   result.availableTiposEntrega = Array.from(allTiposEntrega).sort() as DeliveryType[];
+
+  // Process active revendedores if provided
+  if (activeRevendedoresData && activeRevendedoresData.length > 0) {
+    // Build customer map by normalized nome for joining
+    const customersMap = new Map<string, Customer>();
+    for (const customer of result.customers) {
+      customersMap.set(customer.nomeRevendedoraNormalized, customer);
+    }
+
+    // Join active revendedores with brand purchases
+    const { joined, inconsistencies } = joinActiveRevendedores(
+      activeRevendedoresData,
+      customersMap,
+      selectedCiclo || null,
+      brandItems
+    );
+
+    // Aggregate by sector
+    const sectorStatsMap = aggregateActiveRevendedoresBySector(joined);
+    const sectorStats = Array.from(sectorStatsMap.values());
+
+    // Extract available ciclos from active file (if any)
+    const availableCiclosFromActive = new Set<string>();
+    for (const active of activeRevendedoresData) {
+      if (active.cicloCaptacao) {
+        availableCiclosFromActive.add(active.cicloCaptacao);
+      }
+    }
+
+    // Calculate totals
+    const totalAtivos = joined.length;
+    const totalAtivosBaseBoticario = joined.filter(a => a.existsInBoticario).length;
+    const totalCrossbuyersAtivos = joined.filter(a => a.isCrossbuyer).length;
+
+    result.activeRevendedoresData = {
+      activeRevendedores: joined,
+      sectorStats,
+      selectedCiclo: selectedCiclo || null,
+      availableCiclosFromActive: Array.from(availableCiclosFromActive).sort(),
+      totalAtivos,
+      totalAtivosBaseBoticario,
+      totalCrossbuyersAtivos,
+      inconsistencies,
+    };
+  }
 
   result.success = true;
   return result;
