@@ -202,14 +202,14 @@ export function UploadSection({
           <CardContent>
             <div className="flex items-center gap-4">
               <Select
-                value={selectedCiclo || ''}
-                onValueChange={(value) => onCicloChange(value || null)}
+                value={selectedCiclo || '__all__'}
+                onValueChange={(value) => onCicloChange(value === '__all__' ? null : value)}
               >
                 <SelectTrigger className="w-[300px]">
                   <SelectValue placeholder="Selecione um ciclo" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">Todos os ciclos</SelectItem>
+                  <SelectItem value="__all__">Todos os ciclos</SelectItem>
                   {availableCiclos.map((ciclo) => (
                     <SelectItem key={ciclo} value={ciclo}>
                       {ciclo}
