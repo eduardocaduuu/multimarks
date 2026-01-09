@@ -1,0 +1,223 @@
+import {
+  Item,
+  Customer,
+  BrandId,
+  ProcessingResult,
+  BRAND_ORDER,
+  DeliveryType,
+} from '@/types';
+
+/**
+ * Process items from all brands and generate cross-buyer analysis
+ */
+export function processAllBrands(
+  brandItems: Map<BrandId, Item[]>
+): ProcessingResult {
+  const result: ProcessingResult = {
+    success: false,
+    customers: [],
+    crossBuyers: [],
+    stats: {
+      totalBaseCustomers: 0,
+      crossBuyerCount: 0,
+      brandDistribution: { 2: 0, 3: 0, 4: 0, 5: 0 },
+      brandOverlap: {
+        boticario: 0,
+        eudora: 0,
+        auamigos: 0,
+        oui: 0,
+        qdb: 0,
+      },
+      topOverlapBrand: null,
+    },
+    errors: [],
+    availableCiclos: [],
+    availableSetores: [],
+    availableMeiosCaptacao: [],
+    availableTiposEntrega: [],
+  };
+
+  // Get base customers from O Boticário
+  const boticarioItems = brandItems.get('boticario');
+  if (!boticarioItems || boticarioItems.length === 0) {
+    result.errors.push('Nenhum dado encontrado para O Boticário (planilha obrigatória)');
+    return result;
+  }
+
+  // Build base customer set from O Boticário
+  const baseCustomerNames = new Set<string>();
+  const customerNameMap = new Map<string, string>(); // normalized -> original display name
+
+  for (const item of boticarioItems) {
+    baseCustomerNames.add(item.nomeRevendedoraNormalized);
+    // Keep the first occurrence of the original name
+    if (!customerNameMap.has(item.nomeRevendedoraNormalized)) {
+      customerNameMap.set(item.nomeRevendedoraNormalized, item.nomeRevendedoraOriginal);
+    }
+  }
+
+  result.stats.totalBaseCustomers = baseCustomerNames.size;
+
+  // Build customer data structure
+  const customerData = new Map<string, Customer>();
+
+  // Initialize customers from base
+  for (const normalizedName of baseCustomerNames) {
+    customerData.set(normalizedName, {
+      nomeRevendedora: customerNameMap.get(normalizedName) || normalizedName,
+      nomeRevendedoraNormalized: normalizedName,
+      brands: new Map(),
+      brandCount: 0,
+      totalValorVendaAllBrands: 0,
+      totalItensVendaAllBrands: 0,
+      allCiclos: new Set(),
+      allSetores: new Set(),
+      allMeiosCaptacao: new Set(),
+      allTiposEntrega: new Set(),
+    });
+  }
+
+  // Process all brands
+  for (const brandId of BRAND_ORDER) {
+    const items = brandItems.get(brandId);
+    if (!items || items.length === 0) continue;
+
+    for (const item of items) {
+      // Skip if not in base (O Boticário)
+      if (!baseCustomerNames.has(item.nomeRevendedoraNormalized)) continue;
+
+      const customer = customerData.get(item.nomeRevendedoraNormalized)!;
+
+      // Get or create brand metrics
+      let brandMetrics = customer.brands.get(brandId);
+      if (!brandMetrics) {
+        brandMetrics = {
+          brand: brandId,
+          items: [],
+          totalItensVenda: 0,
+          totalValorVenda: 0,
+          ticketMedioPorItem: 0,
+          ciclos: new Set(),
+          setores: new Set(),
+          meiosCaptacao: new Set(),
+          tiposEntrega: new Set(),
+        };
+        customer.brands.set(brandId, brandMetrics);
+      }
+
+      // Add item
+      brandMetrics.items.push(item);
+
+      // Update metrics only for Venda type
+      if (item.tipo === 'Venda') {
+        brandMetrics.totalItensVenda += item.quantidadeItens;
+        brandMetrics.totalValorVenda += item.valorPraticado;
+      }
+
+      // Track unique values
+      brandMetrics.ciclos.add(item.cicloCaptacao);
+      brandMetrics.setores.add(item.setor);
+      brandMetrics.meiosCaptacao.add(item.meioCaptacao);
+      brandMetrics.tiposEntrega.add(item.tipoEntrega);
+
+      // Update customer aggregates
+      customer.allCiclos.add(item.cicloCaptacao);
+      customer.allSetores.add(item.setor);
+      customer.allMeiosCaptacao.add(item.meioCaptacao);
+      customer.allTiposEntrega.add(item.tipoEntrega);
+    }
+  }
+
+  // Calculate final metrics for each customer
+  const allCiclos = new Set<string>();
+  const allSetores = new Set<string>();
+  const allMeiosCaptacao = new Set<string>();
+  const allTiposEntrega = new Set<DeliveryType>();
+
+  for (const customer of customerData.values()) {
+    customer.brandCount = customer.brands.size;
+
+    // Calculate totals and ticket médio per brand
+    for (const brandMetrics of customer.brands.values()) {
+      if (brandMetrics.totalItensVenda > 0) {
+        brandMetrics.ticketMedioPorItem = Math.round(
+          brandMetrics.totalValorVenda / brandMetrics.totalItensVenda
+        );
+      }
+      customer.totalValorVendaAllBrands += brandMetrics.totalValorVenda;
+      customer.totalItensVendaAllBrands += brandMetrics.totalItensVenda;
+    }
+
+    // Collect unique filter values
+    customer.allCiclos.forEach(c => allCiclos.add(c));
+    customer.allSetores.forEach(s => allSetores.add(s));
+    customer.allMeiosCaptacao.forEach(m => allMeiosCaptacao.add(m));
+    customer.allTiposEntrega.forEach(t => allTiposEntrega.add(t));
+
+    result.customers.push(customer);
+  }
+
+  // Filter cross-buyers (2+ brands)
+  result.crossBuyers = result.customers.filter(c => c.brandCount >= 2);
+
+  // Calculate stats
+  result.stats.crossBuyerCount = result.crossBuyers.length;
+
+  // Brand distribution
+  for (const customer of result.crossBuyers) {
+    const count = customer.brandCount;
+    if (count >= 2 && count <= 5) {
+      result.stats.brandDistribution[count as 2 | 3 | 4 | 5]++;
+    }
+  }
+
+  // Brand overlap (count customers per brand among cross-buyers)
+  for (const customer of result.crossBuyers) {
+    for (const brandId of customer.brands.keys()) {
+      result.stats.brandOverlap[brandId]++;
+    }
+  }
+
+  // Find top overlap brand (excluding boticario)
+  let maxOverlap = 0;
+  for (const brandId of BRAND_ORDER.slice(1)) {
+    const overlap = result.stats.brandOverlap[brandId];
+    if (overlap > maxOverlap) {
+      maxOverlap = overlap;
+      result.stats.topOverlapBrand = brandId;
+    }
+  }
+
+  // Set available filter options
+  result.availableCiclos = Array.from(allCiclos).sort();
+  result.availableSetores = Array.from(allSetores).sort();
+  result.availableMeiosCaptacao = Array.from(allMeiosCaptacao).sort();
+  result.availableTiposEntrega = Array.from(allTiposEntrega).sort() as DeliveryType[];
+
+  result.success = true;
+  return result;
+}
+
+/**
+ * Get customer brand breakdown summary
+ */
+export function getCustomerBrandSummary(customer: Customer): {
+  brandId: BrandId;
+  valor: number;
+  itens: number;
+}[] {
+  const summary: { brandId: BrandId; valor: number; itens: number }[] = [];
+
+  for (const brandId of BRAND_ORDER) {
+    const metrics = customer.brands.get(brandId);
+    if (metrics) {
+      summary.push({
+        brandId,
+        valor: metrics.totalValorVenda,
+        itens: metrics.totalItensVenda,
+      });
+    }
+  }
+
+  return summary;
+}

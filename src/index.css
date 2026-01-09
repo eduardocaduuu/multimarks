@@ -1,0 +1,139 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 222.2 84% 4.9%;
+    --foreground: 210 40% 98%;
+    --card: 222.2 84% 4.9%;
+    --card-foreground: 210 40% 98%;
+    --popover: 222.2 84% 4.9%;
+    --popover-foreground: 210 40% 98%;
+    --primary: 142 71% 45%;
+    --primary-foreground: 144 100% 98%;
+    --secondary: 217.2 32.6% 17.5%;
+    --secondary-foreground: 210 40% 98%;
+    --muted: 217.2 32.6% 17.5%;
+    --muted-foreground: 215 20.2% 65.1%;
+    --accent: 217.2 32.6% 17.5%;
+    --accent-foreground: 210 40% 98%;
+    --destructive: 0 62.8% 30.6%;
+    --destructive-foreground: 210 40% 98%;
+    --border: 217.2 32.6% 17.5%;
+    --input: 217.2 32.6% 17.5%;
+    --ring: 142 71% 45%;
+    --radius: 0.75rem;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground;
+    font-feature-settings: "rlig" 1, "calt" 1;
+  }
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: hsl(var(--muted));
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: hsl(var(--muted-foreground) / 0.3);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: hsl(var(--muted-foreground) / 0.5);
+}
+
+/* Gradient backgrounds */
+.gradient-green {
+  background: linear-gradient(135deg, hsl(142 71% 45% / 0.2) 0%, hsl(160 60% 45% / 0.1) 100%);
+}
+
+.gradient-card {
+  background: linear-gradient(180deg, hsl(var(--card)) 0%, hsl(217.2 32.6% 12%) 100%);
+}
+
+/* Brand gradient backgrounds */
+.brand-gradient-boticario {
+  background: linear-gradient(135deg, #00A86B 0%, #00D68F 100%);
+}
+
+.brand-gradient-eudora {
+  background: linear-gradient(135deg, #7B3996 0%, #BB77D6 100%);
+}
+
+.brand-gradient-auamigos {
+  background: linear-gradient(135deg, #C65E02 0%, #F9A54C 100%);
+}
+
+.brand-gradient-oui {
+  background: linear-gradient(135deg, #C2185B 0%, #FF4081 100%);
+}
+
+.brand-gradient-qdb {
+  background: linear-gradient(135deg, #0097A7 0%, #4DD0E1 100%);
+}
+
+/* Animation classes */
+.animate-slide-up {
+  animation: slideUp 0.3s ease-out;
+}
+
+@keyframes slideUp {
+  from {
+    transform: translateY(10px);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+/* Drop zone styles */
+.drop-zone {
+  @apply border-2 border-dashed border-border rounded-lg transition-all duration-200;
+}
+
+.drop-zone.active {
+  @apply border-primary bg-primary/5;
+}
+
+.drop-zone:hover {
+  @apply border-primary/50;
+}
+
+/* Table styles */
+.data-table {
+  @apply w-full;
+}
+
+.data-table th {
+  @apply px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider bg-muted/50;
+}
+
+.data-table td {
+  @apply px-4 py-3 text-sm;
+}
+
+.data-table tbody tr {
+  @apply border-b border-border transition-colors hover:bg-muted/50;
+}
+
+.data-table tbody tr:last-child {
+  @apply border-b-0;
+}
