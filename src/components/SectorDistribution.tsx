@@ -1,43 +1,55 @@
+import { useState } from 'react';
 import { DashboardStats } from '@/types';
 import { Card, CardContent } from '@/components/ui/card';
-import { Building2 } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { Building2, ChevronDown, ChevronUp } from 'lucide-react';
 
 interface SectorDistributionProps {
   stats: DashboardStats;
 }
 
+const INITIAL_VISIBLE = 5;
+
 export function SectorDistribution({ stats }: SectorDistributionProps) {
+  const [showAll, setShowAll] = useState(false);
   const { setorDistribution, crossBuyerCount } = stats;
 
   // Sort sectors by count (descending)
-  const sortedSetores = Object.entries(setorDistribution)
-    .sort(([, a], [, b]) => b - a)
-    .slice(0, 10); // Top 10 setores
+  const allSetores = Object.entries(setorDistribution)
+    .sort(([, a], [, b]) => b - a);
 
-  if (sortedSetores.length === 0) {
+  if (allSetores.length === 0) {
     return null;
   }
 
+  const visibleSetores = showAll ? allSetores : allSetores.slice(0, INITIAL_VISIBLE);
+  const hasMore = allSetores.length > INITIAL_VISIBLE;
+
   // Find max count for bar width calculation
-  const maxCount = sortedSetores[0]?.[1] || 1;
+  const maxCount = allSetores[0]?.[1] || 1;
 
   return (
     <Card className="bg-gradient-to-br from-card to-muted/50 mb-6">
       <CardContent className="p-6">
-        <div className="flex items-center gap-2 mb-4">
-          <div className="w-10 h-10 rounded-xl bg-indigo-500/10 flex items-center justify-center">
-            <Building2 className="w-5 h-5 text-indigo-500" />
+        <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center gap-2">
+            <div className="w-10 h-10 rounded-xl bg-indigo-500/10 flex items-center justify-center">
+              <Building2 className="w-5 h-5 text-indigo-500" />
+            </div>
+            <div>
+              <h3 className="font-semibold text-foreground">Cross-Buyers por Setor</h3>
+              <p className="text-xs text-muted-foreground">
+                Distribuicao dos {crossBuyerCount.toLocaleString('pt-BR')} cross-buyers
+              </p>
+            </div>
           </div>
-          <div>
-            <h3 className="font-semibold text-foreground">Cross-Buyers por Setor</h3>
-            <p className="text-xs text-muted-foreground">
-              Distribuicao dos {crossBuyerCount.toLocaleString('pt-BR')} cross-buyers
-            </p>
-          </div>
+          <span className="text-xs text-muted-foreground">
+            {allSetores.length} setores
+          </span>
         </div>
 
         <div className="space-y-3">
-          {sortedSetores.map(([setor, count]) => {
+          {visibleSetores.map(([setor, count]) => {
             const percentage = crossBuyerCount > 0
               ? ((count / crossBuyerCount) * 100).toFixed(1)
               : '0';
@@ -69,10 +81,27 @@ export function SectorDistribution({ stats }: SectorDistributionProps) {
           })}
         </div>
 
-        {Object.keys(setorDistribution).length > 10 && (
-          <p className="text-xs text-muted-foreground mt-4 text-center">
-            Mostrando top 10 de {Object.keys(setorDistribution).length} setores
-          </p>
+        {hasMore && (
+          <div className="mt-4 text-center">
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setShowAll(!showAll)}
+              className="text-muted-foreground hover:text-foreground"
+            >
+              {showAll ? (
+                <>
+                  <ChevronUp className="w-4 h-4 mr-1" />
+                  Mostrar menos
+                </>
+              ) : (
+                <>
+                  <ChevronDown className="w-4 h-4 mr-1" />
+                  Ver todos ({allSetores.length - INITIAL_VISIBLE} mais)
+                </>
+              )}
+            </Button>
+          </div>
         )}
       </CardContent>
     </Card>
