@@ -40,6 +40,8 @@ function downloadFile(content: string | Blob, filename: string, mimeType: string
 export function exportCrossBuyersSummaryCSV(customers: Customer[]) {
   const headers = [
     'NomeRevendedora',
+    'Setor',
+    'MeioCaptacao',
     'QtdMarcas',
     ...BRAND_ORDER.map(b => `${BRANDS[b].shortName} (Valor)`),
     ...BRAND_ORDER.map(b => `${BRANDS[b].shortName} (Itens)`),
@@ -58,8 +60,14 @@ export function exportCrossBuyersSummaryCSV(customers: Customer[]) {
       return metrics ? metrics.totalItensVenda.toString() : '';
     });
 
+    // Get unique setores and meios de captação
+    const setores = Array.from(customer.allSetores).filter(s => s).join('; ');
+    const meiosCaptacao = Array.from(customer.allMeiosCaptacao).filter(m => m).join('; ');
+
     return [
       customer.nomeRevendedora,
+      setores,
+      meiosCaptacao,
       customer.brandCount.toString(),
       ...brandValues,
       ...brandItems,
@@ -73,7 +81,7 @@ export function exportCrossBuyersSummaryCSV(customers: Customer[]) {
 }
 
 /**
- * Export detailed items as CSV
+ * Export detailed items as CSV (only Venda type)
  */
 export function exportDetailedItemsCSV(customers: Customer[]) {
   const headers = [
@@ -83,7 +91,6 @@ export function exportDetailedItemsCSV(customers: Customer[]) {
     'CicloCaptacao',
     'CodigoProduto',
     'NomeProduto',
-    'Tipo',
     'QuantidadeItens',
     'ValorPraticado',
     'MeioCaptacao',
@@ -98,6 +105,9 @@ export function exportDetailedItemsCSV(customers: Customer[]) {
       if (!metrics) continue;
 
       for (const item of metrics.items) {
+        // Only export Venda type
+        if (item.tipo !== 'Venda') continue;
+
         rows.push([
           BRANDS[brandId].name,
           customer.nomeRevendedora,
@@ -105,7 +115,6 @@ export function exportDetailedItemsCSV(customers: Customer[]) {
           item.cicloCaptacao,
           item.codigoProduto,
           item.nomeProduto,
-          item.tipo,
           item.quantidadeItens.toString(),
           formatNumber(item.valorPraticado),
           item.meioCaptacao,
@@ -120,7 +129,7 @@ export function exportDetailedItemsCSV(customers: Customer[]) {
 }
 
 /**
- * Export customer detail as CSV
+ * Export customer detail as CSV (only Venda type)
  */
 export function exportCustomerCSV(customer: Customer, brandId?: BrandId) {
   const headers = [
@@ -129,7 +138,6 @@ export function exportCustomerCSV(customer: Customer, brandId?: BrandId) {
     'CicloCaptacao',
     'CodigoProduto',
     'NomeProduto',
-    'Tipo',
     'QuantidadeItens',
     'ValorPraticado',
     'MeioCaptacao',
@@ -144,13 +152,15 @@ export function exportCustomerCSV(customer: Customer, brandId?: BrandId) {
     if (!metrics) continue;
 
     for (const item of metrics.items) {
+      // Only export Venda type
+      if (item.tipo !== 'Venda') continue;
+
       rows.push([
         BRANDS[bid].name,
         item.setor,
         item.cicloCaptacao,
         item.codigoProduto,
         item.nomeProduto,
-        item.tipo,
         item.quantidadeItens.toString(),
         formatNumber(item.valorPraticado),
         item.meioCaptacao,
@@ -168,7 +178,7 @@ export function exportCustomerCSV(customer: Customer, brandId?: BrandId) {
 }
 
 /**
- * Export cross-buyers as XLSX workbook
+ * Export cross-buyers as XLSX workbook (only Venda type)
  */
 export function exportCrossBuyersXLSX(customers: Customer[]) {
   const workbook = XLSX.utils.book_new();
@@ -176,6 +186,8 @@ export function exportCrossBuyersXLSX(customers: Customer[]) {
   // Summary sheet
   const summaryHeaders = [
     'NomeRevendedora',
+    'Setor',
+    'MeioCaptacao',
     'QtdMarcas',
     ...BRAND_ORDER.map(b => `${BRANDS[b].shortName} (Valor)`),
     ...BRAND_ORDER.map(b => `${BRANDS[b].shortName} (Itens)`),
@@ -194,8 +206,14 @@ export function exportCrossBuyersXLSX(customers: Customer[]) {
       return metrics ? metrics.totalItensVenda : '';
     });
 
+    // Get unique setores and meios de captação
+    const setores = Array.from(customer.allSetores).filter(s => s).join('; ');
+    const meiosCaptacao = Array.from(customer.allMeiosCaptacao).filter(m => m).join('; ');
+
     return [
       customer.nomeRevendedora,
+      setores,
+      meiosCaptacao,
       customer.brandCount,
       ...brandValues,
       ...brandItems,
@@ -215,7 +233,6 @@ export function exportCrossBuyersXLSX(customers: Customer[]) {
     'CicloCaptacao',
     'CodigoProduto',
     'NomeProduto',
-    'Tipo',
     'QuantidadeItens',
     'ValorPraticado',
     'MeioCaptacao',
@@ -230,6 +247,9 @@ export function exportCrossBuyersXLSX(customers: Customer[]) {
       if (!metrics) continue;
 
       for (const item of metrics.items) {
+        // Only export Venda type
+        if (item.tipo !== 'Venda') continue;
+
         detailRows.push([
           BRANDS[brandId].name,
           customer.nomeRevendedora,
@@ -237,7 +257,6 @@ export function exportCrossBuyersXLSX(customers: Customer[]) {
           item.cicloCaptacao,
           item.codigoProduto,
           item.nomeProduto,
-          item.tipo,
           item.quantidadeItens,
           item.valorPraticado / 100,
           item.meioCaptacao,
