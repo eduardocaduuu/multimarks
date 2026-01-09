@@ -13,6 +13,7 @@ import {
   exportCrossBuyersXLSX,
 } from '@/lib/export';
 import { StatCards } from './StatCards';
+import { SectorDistribution } from './SectorDistribution';
 import { FiltersPanel } from './FiltersPanel';
 import { ResultsTable } from './ResultsTable';
 import { CustomerDetailDialog } from './CustomerDetailDialog';
@@ -194,6 +195,9 @@ export function ResultsDashboard({ result, onBack: _onBack }: ResultsDashboardPr
 
       {/* Stats cards */}
       <StatCards stats={result.stats} />
+
+      {/* Sector distribution */}
+      <SectorDistribution stats={result.stats} />
 
       {/* Filters */}
       <FiltersPanel

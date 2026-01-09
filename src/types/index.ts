@@ -153,6 +153,7 @@ export interface DashboardStats {
   brandDistribution: Record<number, number>; // Count of customers by brand count (2, 3, 4, 5)
   brandOverlap: Record<BrandId, number>; // Count of customers per brand (excluding boticario in display)
   topOverlapBrand: BrandId | null; // Brand with highest overlap with Boticário
+  setorDistribution: Record<string, number>; // Count of cross-buyers by setor
 }
 
 // Column mapping result

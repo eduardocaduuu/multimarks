@@ -29,6 +29,7 @@ export function processAllBrands(
         qdb: 0,
       },
       topOverlapBrand: null,
+      setorDistribution: {},
     },
     errors: [],
     availableCiclos: [],
@@ -186,6 +187,15 @@ export function processAllBrands(
     if (overlap > maxOverlap) {
       maxOverlap = overlap;
       result.stats.topOverlapBrand = brandId;
+    }
+  }
+
+  // Setor distribution (count cross-buyers per setor)
+  for (const customer of result.crossBuyers) {
+    for (const setor of customer.allSetores) {
+      if (setor) {
+        result.stats.setorDistribution[setor] = (result.stats.setorDistribution[setor] || 0) + 1;
+      }
     }
   }
 
