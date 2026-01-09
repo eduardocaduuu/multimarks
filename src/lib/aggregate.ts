@@ -45,11 +45,15 @@ export function processAllBrands(
     return result;
   }
 
-  // Build base customer set from O Boticário
+  // Build base customer set from O Boticário - ONLY customers with Venda type
   const baseCustomerNames = new Set<string>();
   const customerNameMap = new Map<string, string>(); // normalized -> original display name
 
   for (const item of boticarioItems) {
+    // Only include customers who have VENDA in O Boticário
+    // This ensures cross-buyers must have purchased (not just received gifts/donations) from O Boticário
+    if (item.tipo !== 'Venda') continue;
+
     baseCustomerNames.add(item.nomeRevendedoraNormalized);
     // Keep the first occurrence of the original name
     if (!customerNameMap.has(item.nomeRevendedoraNormalized)) {
@@ -159,8 +163,20 @@ export function processAllBrands(
     result.customers.push(customer);
   }
 
-  // Filter cross-buyers (2+ brands)
-  result.crossBuyers = result.customers.filter(c => c.brandCount >= 2);
+  // Filter cross-buyers (2+ brands AND must have O Boticário)
+  // The second condition is a safety check - with proper base filtering, all customers should have O Boticário
+  result.crossBuyers = result.customers.filter(c => {
+    const hasBoticario = c.brands.has('boticario');
+    const hasTwoPlusBrands = c.brandCount >= 2;
+
+    // Debug: log customers that would be filtered out
+    if (hasTwoPlusBrands && !hasBoticario) {
+      console.warn(`[CROSS-BUYER FILTRADO] Cliente "${c.nomeRevendedora}" tem ${c.brandCount} marcas mas NÃO tem O Boticário:`,
+        Array.from(c.brands.keys()));
+    }
+
+    return hasTwoPlusBrands && hasBoticario;
+  });
 
   // Calculate stats
   result.stats.crossBuyerCount = result.crossBuyers.length;

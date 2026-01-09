@@ -49,9 +49,13 @@ export function ResultsDashboard({ result, onBack: _onBack }: ResultsDashboardPr
 
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
 
-  // Filter customers
+  // Filter customers - ensure all have O Boticário (safety check)
   const filteredCustomers = useMemo(() => {
     return result.crossBuyers.filter(customer => {
+      // CRITICAL: Must have O Boticário to be a valid cross-buyer
+      if (!customer.brands.has('boticario')) {
+        return false;
+      }
       // Search by name
       if (filters.searchName) {
         const searchLower = filters.searchName.toLowerCase();

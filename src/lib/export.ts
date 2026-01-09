@@ -35,9 +35,19 @@ function downloadFile(content: string | Blob, filename: string, mimeType: string
 }
 
 /**
+ * Filter customers to ensure they have O Boticário (safety check)
+ */
+function filterValidCrossBuyers(customers: Customer[]): Customer[] {
+  return customers.filter(c => c.brands.has('boticario') && c.brandCount >= 2);
+}
+
+/**
  * Export cross-buyers summary as CSV
  */
 export function exportCrossBuyersSummaryCSV(customers: Customer[]) {
+  // Ensure only valid cross-buyers (with O Boticário) are exported
+  const validCustomers = filterValidCrossBuyers(customers);
+
   const headers = [
     'NomeRevendedora',
     'Setor',
@@ -49,7 +59,7 @@ export function exportCrossBuyersSummaryCSV(customers: Customer[]) {
     'TotalItens',
   ];
 
-  const rows: string[][] = customers.map(customer => {
+  const rows: string[][] = validCustomers.map(customer => {
     const brandValues = BRAND_ORDER.map(brandId => {
       const metrics = customer.brands.get(brandId);
       return metrics ? formatNumber(metrics.totalValorVenda) : '';
@@ -84,6 +94,9 @@ export function exportCrossBuyersSummaryCSV(customers: Customer[]) {
  * Export detailed items as CSV (only Venda type)
  */
 export function exportDetailedItemsCSV(customers: Customer[]) {
+  // Ensure only valid cross-buyers (with O Boticário) are exported
+  const validCustomers = filterValidCrossBuyers(customers);
+
   const headers = [
     'Marca',
     'NomeRevendedora',
@@ -99,7 +112,7 @@ export function exportDetailedItemsCSV(customers: Customer[]) {
 
   const rows: string[][] = [];
 
-  for (const customer of customers) {
+  for (const customer of validCustomers) {
     for (const brandId of BRAND_ORDER) {
       const metrics = customer.brands.get(brandId);
       if (!metrics) continue;
@@ -181,6 +194,9 @@ export function exportCustomerCSV(customer: Customer, brandId?: BrandId) {
  * Export cross-buyers as XLSX workbook (only Venda type)
  */
 export function exportCrossBuyersXLSX(customers: Customer[]) {
+  // Ensure only valid cross-buyers (with O Boticário) are exported
+  const validCustomers = filterValidCrossBuyers(customers);
+
   const workbook = XLSX.utils.book_new();
 
   // Summary sheet
@@ -195,7 +211,7 @@ export function exportCrossBuyersXLSX(customers: Customer[]) {
     'TotalItens',
   ];
 
-  const summaryRows = customers.map(customer => {
+  const summaryRows = validCustomers.map(customer => {
     const brandValues = BRAND_ORDER.map(brandId => {
       const metrics = customer.brands.get(brandId);
       return metrics ? metrics.totalValorVenda / 100 : '';
@@ -241,7 +257,7 @@ export function exportCrossBuyersXLSX(customers: Customer[]) {
 
   const detailRows: (string | number)[][] = [];
 
-  for (const customer of customers) {
+  for (const customer of validCustomers) {
     for (const brandId of BRAND_ORDER) {
       const metrics = customer.brands.get(brandId);
       if (!metrics) continue;
