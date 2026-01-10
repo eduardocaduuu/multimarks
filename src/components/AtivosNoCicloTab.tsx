@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react';
-import { SectorActiveStats, ActiveRevendedorJoined, BRANDS, BRAND_ORDER } from '@/types';
+import { SectorActiveStats, ActiveRevendedorJoined, BRANDS, BRAND_ORDER, JoinDiagnostico } from '@/types';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { formatCurrency } from '@/lib/utils';
@@ -18,18 +18,28 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { exportAtivosPorSetorCSV } from '@/lib/export';
-import { Building2, Users, TrendingUp, AlertCircle, Download, FileText, ChevronDown } from 'lucide-react';
+import { Building2, Users, TrendingUp, AlertCircle, Download, FileText, ChevronDown, Info, ChevronRight } from 'lucide-react';
 
 interface AtivosNoCicloTabProps {
   sectorStats: SectorActiveStats[];
   selectedCiclo: string | null;
   onRevendedorClick: (active: ActiveRevendedorJoined) => void;
+  diagnosticoJoin?: JoinDiagnostico;
+  diagnosticoParsing?: {
+    totalLinhas: number;
+    excluidosPorCodigoVazio: number;
+    excluidosPorNomeVazio: number;
+    excluidosPorCodigoDuplicado: number;
+    registrosValidos: number;
+  };
 }
 
 export function AtivosNoCicloTab({
   sectorStats,
   selectedCiclo,
   onRevendedorClick,
+  diagnosticoJoin,
+  diagnosticoParsing,
 }: AtivosNoCicloTabProps) {
   const [selectedSector, setSelectedSector] = useState<string | null>(null);
   const [searchSetor, setSearchSetor] = useState('');
@@ -51,6 +61,17 @@ export function AtivosNoCicloTab({
     : null;
 
   const selectedSectorRevendedores = selectedSectorStats?.activeRevendedores || [];
+  const [showDiagnostico, setShowDiagnostico] = useState(false);
+
+  // Calcular se há exclusões
+  const temExclusoes = diagnosticoParsing && (
+    diagnosticoParsing.excluidosPorCodigoVazio > 0 ||
+    diagnosticoParsing.excluidosPorNomeVazio > 0 ||
+    diagnosticoParsing.excluidosPorCodigoDuplicado > 0
+  ) || diagnosticoJoin && (
+    diagnosticoJoin.excluidosPorCicloDiferente > 0 ||
+    diagnosticoJoin.excluidosPorCicloNulo > 0
+  );
 
   return (
     <div>
@@ -78,6 +99,100 @@ export function AtivosNoCicloTab({
           </DropdownMenuContent>
         </DropdownMenu>
       </div>
+
+      {/* Diagnóstico de exclusões */}
+      {(diagnosticoParsing || diagnosticoJoin) && (
+        <Card className={`mb-4 ${temExclusoes ? 'border-amber-300 bg-amber-50/50' : ''}`}>
+          <CardHeader
+            className="cursor-pointer hover:bg-muted/50 transition-colors py-3"
+            onClick={() => setShowDiagnostico(!showDiagnostico)}
+          >
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Info className={`w-4 h-4 ${temExclusoes ? 'text-amber-600' : 'text-muted-foreground'}`} />
+                <CardTitle className="text-sm font-medium">
+                  Diagnóstico de Processamento
+                  {temExclusoes && (
+                    <Badge variant="outline" className="ml-2 text-amber-600 border-amber-300">
+                      Registros excluídos
+                    </Badge>
+                  )}
+                </CardTitle>
+              </div>
+              <ChevronRight className={`w-4 h-4 transition-transform ${showDiagnostico ? 'rotate-90' : ''}`} />
+            </div>
+          </CardHeader>
+          {showDiagnostico && (
+            <CardContent className="pt-0 pb-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {/* Parsing */}
+                {diagnosticoParsing && (
+                  <div className="space-y-2">
+                    <h4 className="font-medium text-sm">Leitura da Planilha</h4>
+                    <div className="text-sm space-y-1">
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">Total de linhas:</span>
+                        <span className="font-mono">{diagnosticoParsing.totalLinhas}</span>
+                      </div>
+                      {diagnosticoParsing.excluidosPorCodigoVazio > 0 && (
+                        <div className="flex justify-between text-amber-600">
+                          <span>Código vazio:</span>
+                          <span className="font-mono">-{diagnosticoParsing.excluidosPorCodigoVazio}</span>
+                        </div>
+                      )}
+                      {diagnosticoParsing.excluidosPorNomeVazio > 0 && (
+                        <div className="flex justify-between text-amber-600">
+                          <span>Nome vazio:</span>
+                          <span className="font-mono">-{diagnosticoParsing.excluidosPorNomeVazio}</span>
+                        </div>
+                      )}
+                      {diagnosticoParsing.excluidosPorCodigoDuplicado > 0 && (
+                        <div className="flex justify-between text-amber-600">
+                          <span>Código duplicado:</span>
+                          <span className="font-mono">-{diagnosticoParsing.excluidosPorCodigoDuplicado}</span>
+                        </div>
+                      )}
+                      <div className="flex justify-between font-medium border-t pt-1">
+                        <span>Registros válidos:</span>
+                        <span className="font-mono">{diagnosticoParsing.registrosValidos}</span>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Join/Filtro */}
+                {diagnosticoJoin && (
+                  <div className="space-y-2">
+                    <h4 className="font-medium text-sm">Filtro por Ciclo</h4>
+                    <div className="text-sm space-y-1">
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">Total recebidos:</span>
+                        <span className="font-mono">{diagnosticoJoin.totalRecebidos}</span>
+                      </div>
+                      {diagnosticoJoin.excluidosPorCicloNulo > 0 && (
+                        <div className="flex justify-between text-amber-600">
+                          <span>Sem ciclo definido:</span>
+                          <span className="font-mono">-{diagnosticoJoin.excluidosPorCicloNulo}</span>
+                        </div>
+                      )}
+                      {diagnosticoJoin.excluidosPorCicloDiferente > 0 && (
+                        <div className="flex justify-between text-amber-600">
+                          <span>Ciclo diferente:</span>
+                          <span className="font-mono">-{diagnosticoJoin.excluidosPorCicloDiferente}</span>
+                        </div>
+                      )}
+                      <div className="flex justify-between font-medium border-t pt-1">
+                        <span>Registros processados:</span>
+                        <span className="font-mono">{diagnosticoJoin.registrosProcessados}</span>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </CardContent>
+          )}
+        </Card>
+      )}
 
       {/* Search */}
       <div className="mb-4">

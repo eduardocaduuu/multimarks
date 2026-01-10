@@ -234,7 +234,7 @@ export function processAllBrands(
     }
 
     // Join active revendedores with brand purchases
-    const { joined, inconsistencies } = joinActiveRevendedores(
+    const { joined, inconsistencies, diagnostico } = joinActiveRevendedores(
       activeRevendedoresData,
       customersMap,
       selectedCiclo || null,
@@ -267,6 +267,7 @@ export function processAllBrands(
       totalAtivosBaseBoticario,
       totalCrossbuyersAtivos,
       inconsistencies,
+      diagnosticoJoin: diagnostico,
     };
   }
 

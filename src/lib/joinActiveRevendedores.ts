@@ -7,6 +7,7 @@ import {
   CustomerBrandMetrics,
   SectorActiveStats,
   BRAND_ORDER,
+  JoinDiagnostico,
 } from '@/types';
 
 /**
@@ -21,9 +22,15 @@ export function joinActiveRevendedores(
 ): {
   joined: ActiveRevendedorJoined[];
   inconsistencies: string[];
+  diagnostico: JoinDiagnostico;
 } {
   const joined: ActiveRevendedorJoined[] = [];
   const inconsistencies: string[] = [];
+
+  // Diagnóstico de exclusões por ciclo
+  let excluidosPorCicloDiferente = 0;
+  let excluidosPorCicloNulo = 0;
+  const porSetor = new Map<string, { total: number; excluidosPorCiclo: number }>();
 
   // Note: In future, if brand items have codigoRevendedora, we could build:
   // - customersByCodigo map for efficient lookup by codigo
@@ -41,10 +48,24 @@ export function joinActiveRevendedores(
 
   // Process each active revendedor
   for (const active of activeRevendedores) {
+    const setor = active.setor || 'Não informado';
+
+    // Rastrear total por setor
+    if (!porSetor.has(setor)) {
+      porSetor.set(setor, { total: 0, excluidosPorCiclo: 0 });
+    }
+    porSetor.get(setor)!.total++;
+
     // Filter by ciclo if selected
     // Se um ciclo está selecionado, só inclui ativos que têm exatamente esse ciclo
     // Ativos sem ciclo (null) ou com ciclo diferente são excluídos
     if (selectedCiclo && active.cicloCaptacao !== selectedCiclo) {
+      if (active.cicloCaptacao === null) {
+        excluidosPorCicloNulo++;
+      } else {
+        excluidosPorCicloDiferente++;
+      }
+      porSetor.get(setor)!.excluidosPorCiclo++;
       continue;
     }
 
@@ -216,7 +237,16 @@ export function joinActiveRevendedores(
     });
   }
 
-  return { joined, inconsistencies };
+  // Criar diagnóstico
+  const diagnostico: JoinDiagnostico = {
+    totalRecebidos: activeRevendedores.length,
+    excluidosPorCicloDiferente,
+    excluidosPorCicloNulo,
+    registrosProcessados: joined.length,
+    porSetor,
+  };
+
+  return { joined, inconsistencies, diagnostico };
 }
 
 /**

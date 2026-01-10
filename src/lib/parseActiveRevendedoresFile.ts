@@ -230,6 +230,11 @@ export async function parseActiveRevendedoresFile(
     const seenCodigos = new Set<string>();
     const seenNomes = new Map<string, string>(); // normalized -> original codigo
 
+    // Diagnóstico de exclusões
+    let excluidosPorCodigoVazio = 0;
+    let excluidosPorNomeVazio = 0;
+    let excluidosPorCodigoDuplicado = 0;
+
     // Process each row
     for (let i = 0; i < jsonData.length; i++) {
       const row = jsonData[i];
@@ -248,12 +253,14 @@ export async function parseActiveRevendedoresFile(
         );
         if (!codigoOriginal) {
           result.warnings.push(`Linha ${rowNum}: CodigoRevendedora vazio, linha ignorada`);
+          excluidosPorCodigoVazio++;
           continue;
         }
 
         const nomeOriginal = normalizeNameForDisplay(getValue('nomeRevendedora'));
         if (!nomeOriginal) {
           result.warnings.push(`Linha ${rowNum}: NomeRevendedora vazio, linha ignorada`);
+          excluidosPorNomeVazio++;
           continue;
         }
 
@@ -270,6 +277,7 @@ export async function parseActiveRevendedoresFile(
           result.warnings.push(
             `Linha ${rowNum}: CodigoRevendedora duplicado "${codigoOriginal}", linha ignorada`
           );
+          excluidosPorCodigoDuplicado++;
           continue;
         }
 
@@ -298,6 +306,15 @@ export async function parseActiveRevendedoresFile(
         result.warnings.push(`Linha ${rowNum}: Erro ao processar - ${err}`);
       }
     }
+
+    // Adicionar diagnóstico
+    result.diagnostico = {
+      totalLinhas: jsonData.length,
+      excluidosPorCodigoVazio,
+      excluidosPorNomeVazio,
+      excluidosPorCodigoDuplicado,
+      registrosValidos: result.activeRevendedores.length,
+    };
 
     if (result.activeRevendedores.length === 0) {
       result.errors.push(`Nenhum revendedor ativo válido encontrado no arquivo`);

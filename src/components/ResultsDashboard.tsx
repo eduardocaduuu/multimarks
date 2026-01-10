@@ -268,6 +268,7 @@ export function ResultsDashboard({ result, onBack: _onBack }: ResultsDashboardPr
             <AtivosNoCicloTab
               sectorStats={result.activeRevendedoresData.sectorStats}
               selectedCiclo={result.activeRevendedoresData.selectedCiclo}
+              diagnosticoJoin={result.activeRevendedoresData.diagnosticoJoin}
               onRevendedorClick={(active) => {
                 // Find customer by nome and open detail
                 const customer = result.customers.find(

@@ -201,6 +201,7 @@ export interface ProcessingResult {
     totalAtivosBaseBoticario: number;
     totalCrossbuyersAtivos: number;
     inconsistencies: string[]; // Global inconsistencies
+    diagnosticoJoin?: JoinDiagnostico; // Diagnóstico de exclusões no join
   };
 }
 
@@ -285,6 +286,23 @@ export interface ActiveRevendedoresParseResult {
   warnings: string[];
   rowCount: number;
   hasCicloColumn: boolean;
+  // Diagnóstico de exclusões no parsing
+  diagnostico?: {
+    totalLinhas: number;
+    excluidosPorCodigoVazio: number;
+    excluidosPorNomeVazio: number;
+    excluidosPorCodigoDuplicado: number;
+    registrosValidos: number;
+  };
+}
+
+// Diagnóstico de exclusões no join
+export interface JoinDiagnostico {
+  totalRecebidos: number;
+  excluidosPorCicloDiferente: number;
+  excluidosPorCicloNulo: number;
+  registrosProcessados: number;
+  porSetor: Map<string, { total: number; excluidosPorCiclo: number }>;
 }
 
 // Re-export sector activity types
