@@ -54,6 +54,9 @@ function normalizeDeliveryType(value: string | undefined | null): { normalized: 
 /**
  * Normalize billing status
  * Detecta se o pedido foi faturado com base em várias nomenclaturas possíveis
+ *
+ * IMPORTANTE: Valores curtos (s, y, 1, true, etc.) usam match EXATO para evitar
+ * falsos positivos (ex: "serviços" contém "s" mas não significa faturado)
  */
 function normalizeBillingStatus(value: string | undefined | null): {
   status: BillingStatus;
@@ -65,47 +68,60 @@ function normalizeBillingStatus(value: string | undefined | null): {
 
   const lower = original.toLowerCase();
 
-  // Padrões que indicam FATURADO
-  const faturadoPatterns = [
-    'faturado', 'faturada', 'fat',
-    'aprovado', 'aprovada',
-    'concluido', 'concluída', 'concluida',
-    'finalizado', 'finalizada',
-    'emitido', 'emitida',
-    'processado', 'processada',
-    'ok', 'sim', 'yes', 's', 'y', '1', 'true',
+  // Valores curtos que requerem match EXATO (===)
+  const faturadoExact = ['sim', 's', 'yes', 'y', '1', 'true', 'ok'];
+  const canceladoExact = ['nao', 'não', 'no', 'n', '0', 'false'];
+
+  // Padrões fortes que podem usar includes (palavras longas/específicas)
+  const faturadoIncludes = [
+    'faturad',   // faturado, faturada, faturamento
+    'aprovad',   // aprovado, aprovada
+    'concluid',  // concluido, concluída, concluida
+    'finalizad', // finalizado, finalizada
+    'emitid',    // emitido, emitida
+    'processad', // processado, processada
   ];
 
-  // Padrões que indicam PENDENTE
-  const pendentePatterns = [
+  // Padrões que indicam PENDENTE (podem usar includes)
+  const pendenteIncludes = [
     'pendente', 'aguardando', 'em processamento', 'em processo',
     'aberto', 'aberta', 'novo', 'nova',
     'analise', 'análise', 'em analise',
   ];
 
-  // Padrões que indicam CANCELADO
-  const canceladoPatterns = [
-    'cancelado', 'cancelada', 'cancel',
-    'estornado', 'estornada', 'estorno',
-    'devolvido', 'devolvida', 'devolucao', 'devolução',
-    'rejeitado', 'rejeitada',
-    'nao', 'não', 'no', 'n', '0', 'false',
+  // Padrões que indicam CANCELADO (podem usar includes)
+  const canceladoIncludes = [
+    'cancelad',   // cancelado, cancelada
+    'estornad',   // estornado, estornada
+    'estorno',
+    'devolvid',   // devolvido, devolvida
+    'devolucao', 'devolução',
+    'rejeitad',   // rejeitado, rejeitada
   ];
 
-  for (const pattern of faturadoPatterns) {
-    if (lower.includes(pattern) || lower === pattern) {
+  // 1. Primeiro verifica matches EXATOS para valores curtos
+  if (faturadoExact.includes(lower)) {
+    return { status: 'Faturado', original, isFaturado: true };
+  }
+  if (canceladoExact.includes(lower)) {
+    return { status: 'Cancelado', original, isFaturado: false };
+  }
+
+  // 2. Depois verifica includes para palavras fortes/específicas
+  for (const pattern of faturadoIncludes) {
+    if (lower.includes(pattern)) {
       return { status: 'Faturado', original, isFaturado: true };
     }
   }
 
-  for (const pattern of canceladoPatterns) {
-    if (lower.includes(pattern) || lower === pattern) {
+  for (const pattern of canceladoIncludes) {
+    if (lower.includes(pattern)) {
       return { status: 'Cancelado', original, isFaturado: false };
     }
   }
 
-  for (const pattern of pendentePatterns) {
-    if (lower.includes(pattern) || lower === pattern) {
+  for (const pattern of pendenteIncludes) {
+    if (lower.includes(pattern)) {
       return { status: 'Pendente', original, isFaturado: false };
     }
   }
@@ -195,6 +211,30 @@ export async function parseFile(file: File, brandId: BrandId): Promise<ParseResu
     if (result.items.length === 0) {
       result.errors.push(`Nenhum item válido encontrado em ${BRANDS[brandId].name}`);
       return result;
+    }
+
+    // Sanity-check: se coluna de billing foi detectada mas >80% das linhas são "Desconhecido",
+    // a coluna provavelmente não é de faturamento real
+    if (result.hasBillingColumns) {
+      const itemsWithBillingStatus = result.items.filter(item => item.statusFaturamento !== undefined);
+      if (itemsWithBillingStatus.length > 0) {
+        const unknownCount = itemsWithBillingStatus.filter(item => item.statusFaturamento === 'Desconhecido').length;
+        const unknownRatio = unknownCount / itemsWithBillingStatus.length;
+
+        if (unknownRatio > 0.8) {
+          console.warn(`[BILLING] ${BRANDS[brandId].name}: ${(unknownRatio * 100).toFixed(1)}% das linhas com status "Desconhecido" - desativando billing`);
+          result.warnings.push(
+            `Coluna de faturamento detectada não parece conter dados de faturamento reais (${(unknownRatio * 100).toFixed(0)}% desconhecido). Métricas de faturamento desativadas.`
+          );
+          result.hasBillingColumns = false;
+          // Limpa os dados de billing dos items
+          for (const item of result.items) {
+            item.isFaturado = undefined;
+            item.statusFaturamento = undefined;
+            item.statusFaturamentoOriginal = undefined;
+          }
+        }
+      }
     }
 
     result.success = true;
