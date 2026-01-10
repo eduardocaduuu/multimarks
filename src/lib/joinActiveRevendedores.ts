@@ -27,6 +27,11 @@ export function joinActiveRevendedores(
   const joined: ActiveRevendedorJoined[] = [];
   const inconsistencies: string[] = [];
 
+  // DEBUG: Log para diagnóstico
+  console.log('[JOIN] selectedCiclo:', selectedCiclo);
+  console.log('[JOIN] Total activeRevendedores:', activeRevendedores.length);
+  console.log('[JOIN] Total customers (com vendas):', customers.size);
+
   // Diagnóstico de exclusões por ciclo
   let excluidosPorCicloDiferente = 0;
   const porSetor = new Map<string, { total: number; excluidosPorCiclo: number }>();
@@ -209,6 +214,11 @@ export function joinActiveRevendedores(
     // - Sem ciclo selecionado: considera ativo se teve alguma venda (brands.size > 0)
     const finalHasPurchasesInCiclo = selectedCiclo ? hasPurchasesInCiclo : (brands.size > 0);
 
+    // DEBUG: Log para setores específicos
+    if (setor.includes('INICIOS CENTRAL') || setor.includes('PRATA')) {
+      console.log(`[DEBUG SETOR] ${setor}: ${active.nomeRevendedora} | matched=${!!matchedCustomer} | brands=${brands.size} | hasPurchases=${hasPurchasesInCiclo} | final=${finalHasPurchasesInCiclo}`);
+    }
+
     joined.push({
       codigoRevendedora: active.codigoRevendedora,
       codigoRevendedoraOriginal: active.codigoRevendedoraOriginal,
@@ -314,6 +324,11 @@ export function aggregateActiveRevendedoresBySector(
   for (const stats of sectorStats.values()) {
     stats.percentCrossbuyer =
       stats.ativosBaseBoticario > 0 ? (stats.crossbuyers / stats.ativosBaseBoticario) * 100 : 0;
+
+    // DEBUG: Log para setores específicos
+    if (stats.setor.includes('INICIOS CENTRAL') || stats.setor.includes('PRATA')) {
+      console.log(`[DEBUG AGREGACAO] ${stats.setor}: totalAtivos=${stats.totalAtivos} | totalNaLista=${stats.activeRevendedores.length}`);
+    }
   }
 
   return sectorStats;
