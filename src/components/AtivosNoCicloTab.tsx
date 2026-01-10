@@ -394,10 +394,12 @@ export function AtivosNoCicloTab({
                   {selectedSectorRevendedores.map((active) => (
                     <Card
                       key={active.codigoRevendedora}
-                      className="p-3 hover:bg-muted/50 transition-colors cursor-pointer"
+                      className={`p-3 hover:bg-muted/50 transition-colors ${active.existsInBoticario ? 'cursor-pointer' : ''}`}
                       onClick={() => {
-                        onRevendedorClick(active);
-                        setSelectedSector(null);
+                        if (active.existsInBoticario) {
+                          onRevendedorClick(active);
+                          setSelectedSector(null);
+                        }
                       }}
                     >
                       <div className="flex items-center justify-between">
@@ -437,6 +439,17 @@ export function AtivosNoCicloTab({
                             {formatCurrency(active.totalValorVendaAllBrands)} •{' '}
                             {active.totalItensVendaAllBrands.toLocaleString('pt-BR')} itens
                           </div>
+                          {/* Mostrar inconsistências */}
+                          {active.inconsistencies.length > 0 && (
+                            <div className="mt-2 p-2 bg-destructive/10 rounded-md border border-destructive/20">
+                              <p className="text-xs font-medium text-destructive mb-1">Inconsistências:</p>
+                              <ul className="text-xs text-destructive/80 space-y-0.5">
+                                {active.inconsistencies.map((inc, idx) => (
+                                  <li key={idx}>• {inc}</li>
+                                ))}
+                              </ul>
+                            </div>
+                          )}
                         </div>
                       </div>
                     </Card>

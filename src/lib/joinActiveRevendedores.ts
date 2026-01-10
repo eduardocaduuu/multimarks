@@ -29,7 +29,6 @@ export function joinActiveRevendedores(
 
   // Diagnóstico de exclusões por ciclo
   let excluidosPorCicloDiferente = 0;
-  let excluidosPorCicloNulo = 0;
   const porSetor = new Map<string, { total: number; excluidosPorCiclo: number }>();
 
   // Note: In future, if brand items have codigoRevendedora, we could build:
@@ -57,14 +56,10 @@ export function joinActiveRevendedores(
     porSetor.get(setor)!.total++;
 
     // Filter by ciclo if selected
-    // Se um ciclo está selecionado, só inclui ativos que têm exatamente esse ciclo
-    // Ativos sem ciclo (null) ou com ciclo diferente são excluídos
-    if (selectedCiclo && active.cicloCaptacao !== selectedCiclo) {
-      if (active.cicloCaptacao === null) {
-        excluidosPorCicloNulo++;
-      } else {
-        excluidosPorCicloDiferente++;
-      }
+    // Se um ciclo está selecionado, exclui apenas ativos que têm ciclo DIFERENTE
+    // Ativos sem ciclo definido (null) são INCLUÍDOS (tratados como "qualquer ciclo")
+    if (selectedCiclo && active.cicloCaptacao && active.cicloCaptacao !== selectedCiclo) {
+      excluidosPorCicloDiferente++;
       porSetor.get(setor)!.excluidosPorCiclo++;
       continue;
     }
@@ -241,7 +236,7 @@ export function joinActiveRevendedores(
   const diagnostico: JoinDiagnostico = {
     totalRecebidos: activeRevendedores.length,
     excluidosPorCicloDiferente,
-    excluidosPorCicloNulo,
+    excluidosPorCicloNulo: 0, // Não excluímos mais por ciclo nulo
     registrosProcessados: joined.length,
     porSetor,
   };

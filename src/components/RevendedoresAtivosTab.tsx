@@ -279,6 +279,11 @@ export function RevendedoresAtivosTab({
         <p className="text-sm text-muted-foreground">
           Mostrando {filteredRevendedores.length.toLocaleString('pt-BR')} de{' '}
           {activeRevendedores.length.toLocaleString('pt-BR')} revendedores ativos
+          {activeRevendedores.length > 0 && (
+            <span className="font-medium text-foreground ml-1">
+              ({((filteredRevendedores.length / activeRevendedores.length) * 100).toFixed(1)}%)
+            </span>
+          )}
         </p>
       </div>
 
