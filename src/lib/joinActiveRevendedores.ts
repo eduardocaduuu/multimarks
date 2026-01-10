@@ -46,23 +46,17 @@ export function joinActiveRevendedores(
   }
 
   // Process each active revendedor
+  // IMPORTANTE: Não filtramos por ciclo da planilha Geral!
+  // O que define "ativo no ciclo" é ter VENDA no ciclo (em qualquer marca),
+  // NÃO o ciclo cadastrado na planilha Geral.
   for (const active of activeRevendedores) {
     const setor = active.setor || 'Não informado';
 
-    // Rastrear total por setor
+    // Rastrear total por setor (todos da planilha Geral)
     if (!porSetor.has(setor)) {
       porSetor.set(setor, { total: 0, excluidosPorCiclo: 0 });
     }
     porSetor.get(setor)!.total++;
-
-    // Filter by ciclo if selected
-    // Se um ciclo está selecionado, exclui apenas ativos que têm ciclo DIFERENTE
-    // Ativos sem ciclo definido (null) são INCLUÍDOS (tratados como "qualquer ciclo")
-    if (selectedCiclo && active.cicloCaptacao && active.cicloCaptacao !== selectedCiclo) {
-      excluidosPorCicloDiferente++;
-      porSetor.get(setor)!.excluidosPorCiclo++;
-      continue;
-    }
 
     let matchedCustomer: Customer | null = null;
 
@@ -210,19 +204,24 @@ export function joinActiveRevendedores(
 
     const isCrossbuyer = brands.size >= 2 && existsInBoticario;
 
+    // hasPurchasesInCiclo deve refletir se teve VENDA no ciclo (ou em qualquer ciclo se não selecionado)
+    // - Com ciclo selecionado: usa o hasPurchasesInCiclo calculado (vendas filtradas por ciclo)
+    // - Sem ciclo selecionado: considera ativo se teve alguma venda (brands.size > 0)
+    const finalHasPurchasesInCiclo = selectedCiclo ? hasPurchasesInCiclo : (brands.size > 0);
+
     joined.push({
       codigoRevendedora: active.codigoRevendedora,
       codigoRevendedoraOriginal: active.codigoRevendedoraOriginal,
       nomeRevendedora: active.nomeRevendedora,
       nomeRevendedoraNormalized: active.nomeRevendedoraNormalized,
-      setor: active.setor, // Authoritative from active file
+      setor: active.setor, // Setor EXCLUSIVAMENTE da planilha Geral (authoritative)
       cicloCaptacao: active.cicloCaptacao,
       brands,
       brandCount: brands.size,
       totalValorVendaAllBrands,
       totalItensVendaAllBrands,
       existsInBoticario,
-      hasPurchasesInCiclo: hasPurchasesInCiclo || !selectedCiclo, // If no ciclo selected, consider as having purchases
+      hasPurchasesInCiclo: finalHasPurchasesInCiclo,
       isCrossbuyer,
       inconsistencies: activeInconsistencies,
     });
