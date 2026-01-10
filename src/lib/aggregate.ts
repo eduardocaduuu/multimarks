@@ -5,16 +5,24 @@ import {
   ProcessingResult,
   BRAND_ORDER,
   DeliveryType,
-  ActiveRevendedorData,
 } from '@/types';
-import { joinActiveRevendedores, aggregateActiveRevendedoresBySector } from './joinActiveRevendedores';
+import {
+  GeralTransactionRow,
+  deriveAtivosFromTransactions,
+  RevendedorAtivo,
+} from './parseGeralFile';
 
 /**
  * Process items from all brands and generate cross-buyer analysis
+ *
+ * REGRA:
+ * 1. Ativos = revendedores da planilha Geral com Tipo=Venda e CicloFaturamento=ciclo (deduplica por código)
+ * 2. Multimarcas = ativos que aparecem em 2+ planilhas de marca no mesmo ciclo
+ * 3. Planilhas de marca NÃO criam ativos, apenas enriquecem
  */
 export function processAllBrands(
   brandItems: Map<BrandId, Item[]>,
-  activeRevendedoresData?: ActiveRevendedorData[],
+  geralTransactions?: GeralTransactionRow[],
   selectedCiclo?: string | null
 ): ProcessingResult {
   const result: ProcessingResult = {
@@ -218,97 +226,231 @@ export function processAllBrands(
   result.availableMeiosCaptacao = Array.from(allMeiosCaptacao).sort();
   result.availableTiposEntrega = Array.from(allTiposEntrega).sort() as DeliveryType[];
 
-  // Process active revendedores if provided
-  if (activeRevendedoresData && activeRevendedoresData.length > 0) {
-    // Build customer map by normalized nome for joining
-    const customersMap = new Map<string, Customer>();
-    for (const customer of result.customers) {
-      customersMap.set(customer.nomeRevendedoraNormalized, customer);
-    }
-
-    // Join active revendedores with brand purchases
-    const { joined, inconsistencies, diagnostico } = joinActiveRevendedores(
-      activeRevendedoresData,
-      customersMap,
-      selectedCiclo || null,
-      brandItems
+  // Process planilha Geral (transacional) if provided
+  if (geralTransactions && geralTransactions.length > 0 && selectedCiclo) {
+    // PASSO 1: Derivar ativos da planilha Geral
+    // Ativo = Tipo=Venda + CicloFaturamento=ciclo selecionado + deduplicação por código
+    const { ativos } = deriveAtivosFromTransactions(
+      geralTransactions,
+      selectedCiclo
     );
 
-    // Aggregate by sector
-    const sectorStatsMap = aggregateActiveRevendedoresBySector(joined);
-    const sectorStats = Array.from(sectorStatsMap.values());
+    console.log(`[AGGREGATE] Ativos derivados: ${ativos.length}`);
 
-    // Extract available ciclos from active file (if any)
-    const availableCiclosFromActive = new Set<string>();
-    for (const active of activeRevendedoresData) {
-      if (active.cicloCaptacao) {
-        availableCiclosFromActive.add(active.cicloCaptacao);
-      }
+    // PASSO 2: Para cada ativo, verificar em quantas planilhas de marca ele aparece
+    // Criar índice por nome normalizado para busca rápida
+    const ativosByNome = new Map<string, RevendedorAtivo>();
+    const ativosByCodigo = new Map<string, RevendedorAtivo>();
+    for (const ativo of ativos) {
+      ativosByNome.set(ativo.nomeRevendedoraNormalized, ativo);
+      ativosByCodigo.set(ativo.codigoRevendedora, ativo);
     }
 
-    // REGRA FUNDAMENTAL:
-    // - totalAtivos = TODOS os revendedores da planilha Geral
-    // - totalMultimarcas = ativos que compraram 2+ marcas no ciclo
-    // - % multimarcas = totalMultimarcas / totalAtivos
+    // Criar estrutura para rastrear marcas por ativo
+    interface AtivoEnriquecido {
+      ativo: RevendedorAtivo;
+      marcas: Set<BrandId>;
+      valorPorMarca: Map<BrandId, number>;
+      itensPorMarca: Map<BrandId, number>;
+    }
+    const ativosEnriquecidos = new Map<string, AtivoEnriquecido>();
 
-    // Total de ATIVOS = todos da planilha Geral (não depende de ter compra)
-    const totalAtivos = joined.length;
+    for (const ativo of ativos) {
+      ativosEnriquecidos.set(ativo.codigoRevendedora, {
+        ativo,
+        marcas: new Set(),
+        valorPorMarca: new Map(),
+        itensPorMarca: new Map(),
+      });
+    }
 
-    // Métricas de compras nas planilhas de marca
-    const totalRegistrados = joined.filter(a => a.hasVendaRegistrada).length;
-    const totalRegistradosBaseBoticario = joined.filter(a => a.hasVendaRegistrada && a.existsInBoticario).length;
-    const totalCrossbuyersRegistrados = joined.filter(a => a.isCrossbuyerRegistrado).length;
-
-    // Métricas de Faturamento
-    const totalFaturados = joined.filter(a => a.hasVendaFaturada).length;
-    const totalFaturadosBaseBoticario = joined.filter(a => a.hasVendaFaturada && a.existsInBoticario).length;
-    const totalCrossbuyersFaturados = joined.filter(a => a.isCrossbuyerFaturado).length;
-
-    // Detectar se há dados de faturamento disponíveis
-    // (verificar se algum item tem isFaturado definido)
-    let hasBillingData = false;
+    // Verificar cada planilha de marca
     for (const brandId of BRAND_ORDER) {
-      const items = brandItems.get(brandId);
-      if (items) {
-        for (const item of items) {
-          if (item.isFaturado !== undefined) {
-            hasBillingData = true;
-            break;
-          }
+      const items = brandItems.get(brandId) || [];
+
+      for (const item of items) {
+        // Apenas Tipo=Venda
+        if (item.tipo !== 'Venda') continue;
+
+        // Verificar se o ciclo bate (usar cicloCaptacao como fallback se não tiver cicloFaturamento)
+        const itemCiclo = item.cicloCaptacao; // Nas planilhas de marca, usar cicloCaptacao
+        if (itemCiclo !== selectedCiclo) continue;
+
+        // Tentar encontrar o ativo por nome normalizado
+        const ativo = ativosByNome.get(item.nomeRevendedoraNormalized);
+        if (!ativo) continue; // Não é ativo, ignorar
+
+        // Registrar a marca
+        const enriquecido = ativosEnriquecidos.get(ativo.codigoRevendedora);
+        if (enriquecido) {
+          enriquecido.marcas.add(brandId);
+          enriquecido.valorPorMarca.set(
+            brandId,
+            (enriquecido.valorPorMarca.get(brandId) || 0) + item.valorPraticado
+          );
+          enriquecido.itensPorMarca.set(
+            brandId,
+            (enriquecido.itensPorMarca.get(brandId) || 0) + item.quantidadeItens
+          );
         }
-        if (hasBillingData) break;
       }
     }
+
+    // PASSO 3: Agregar por setor
+    const sectorStats = new Map<string, {
+      setor: string;
+      totalAtivos: number;
+      baseBoticario: number;
+      multimarcas: number;
+      percentMultimarcas: number;
+      valorTotal: number;
+      itensTotal: number;
+      ativosDetalhes: Array<{
+        codigo: string;
+        nome: string;
+        marcas: BrandId[];
+        isMultimarcas: boolean;
+      }>;
+    }>();
+
+    let totalAtivos = 0;
+    let totalBaseBoticario = 0;
+    let totalMultimarcas = 0;
+
+    for (const [, enriquecido] of ativosEnriquecidos) {
+      const setor = enriquecido.ativo.setor;
+      const isMultimarcas = enriquecido.marcas.size >= 2;
+      const hasBoticario = enriquecido.marcas.has('boticario');
+
+      // Inicializar setor se não existir
+      if (!sectorStats.has(setor)) {
+        sectorStats.set(setor, {
+          setor,
+          totalAtivos: 0,
+          baseBoticario: 0,
+          multimarcas: 0,
+          percentMultimarcas: 0,
+          valorTotal: 0,
+          itensTotal: 0,
+          ativosDetalhes: [],
+        });
+      }
+
+      const stats = sectorStats.get(setor)!;
+      stats.totalAtivos++;
+      totalAtivos++;
+
+      if (hasBoticario) {
+        stats.baseBoticario++;
+        totalBaseBoticario++;
+      }
+
+      if (isMultimarcas) {
+        stats.multimarcas++;
+        totalMultimarcas++;
+      }
+
+      // Somar valores
+      for (const [, valor] of enriquecido.valorPorMarca) {
+        stats.valorTotal += valor;
+      }
+      for (const [, itens] of enriquecido.itensPorMarca) {
+        stats.itensTotal += itens;
+      }
+
+      // Adicionar detalhes para auditoria
+      stats.ativosDetalhes.push({
+        codigo: enriquecido.ativo.codigoRevendedoraOriginal,
+        nome: enriquecido.ativo.nomeRevendedora,
+        marcas: Array.from(enriquecido.marcas),
+        isMultimarcas,
+      });
+    }
+
+    // Calcular percentuais
+    for (const stats of sectorStats.values()) {
+      stats.percentMultimarcas = stats.totalAtivos > 0
+        ? (stats.multimarcas / stats.totalAtivos) * 100
+        : 0;
+    }
+
+    // Converter para formato esperado pelo joinActiveRevendedores
+    const joined = ativos.map(ativo => {
+      const enriquecido = ativosEnriquecidos.get(ativo.codigoRevendedora)!;
+      return {
+        codigoRevendedora: ativo.codigoRevendedora,
+        codigoRevendedoraOriginal: ativo.codigoRevendedoraOriginal,
+        nomeRevendedora: ativo.nomeRevendedora,
+        nomeRevendedoraNormalized: ativo.nomeRevendedoraNormalized,
+        setor: ativo.setor,
+        cicloCaptacao: ativo.cicloFaturamento,
+        brands: new Map(),
+        brandCount: enriquecido.marcas.size,
+        totalValorVendaAllBrands: ativo.totalValor,
+        totalItensVendaAllBrands: ativo.totalItens,
+        existsInBoticario: enriquecido.marcas.has('boticario'),
+        hasVendaRegistrada: enriquecido.marcas.size > 0,
+        isCrossbuyerRegistrado: enriquecido.marcas.size >= 2,
+        hasVendaFaturada: false,
+        isCrossbuyerFaturado: false,
+        hasPurchasesInCiclo: enriquecido.marcas.size > 0,
+        isCrossbuyer: enriquecido.marcas.size >= 2,
+        inconsistencies: [],
+      };
+    });
+
+    // Converter sectorStats para o formato SectorActiveStats
+    const sectorStatsArray = Array.from(sectorStats.values()).map(s => ({
+      setor: s.setor,
+      totalAtivos: s.totalAtivos,
+      totalRegistrados: s.totalAtivos,
+      registradosBaseBoticario: s.baseBoticario,
+      crossbuyersRegistrados: s.multimarcas,
+      percentCrossbuyerRegistrados: s.percentMultimarcas,
+      totalFaturados: 0,
+      faturadosBaseBoticario: 0,
+      crossbuyersFaturados: 0,
+      percentCrossbuyerFaturados: 0,
+      gapRegistradoFaturado: 0,
+      ativosBaseBoticario: s.baseBoticario,
+      crossbuyers: s.multimarcas,
+      percentCrossbuyer: s.percentMultimarcas,
+      valorPorMarca: { boticario: 0, eudora: 0, auamigos: 0, oui: 0, qdb: 0 },
+      itensPorMarca: { boticario: 0, eudora: 0, auamigos: 0, oui: 0, qdb: 0 },
+      activeRevendedores: joined.filter(j => j.setor === s.setor),
+    }));
 
     result.activeRevendedoresData = {
       activeRevendedores: joined,
-      sectorStats,
-      selectedCiclo: selectedCiclo || null,
-      availableCiclosFromActive: Array.from(availableCiclosFromActive).sort(),
+      sectorStats: sectorStatsArray,
+      selectedCiclo: selectedCiclo,
+      availableCiclosFromActive: [],
 
-      // REGRA: totalAtivos = TODOS da planilha Geral
       totalAtivos,
+      totalRegistrados: totalAtivos,
+      totalRegistradosBaseBoticario: totalBaseBoticario,
+      totalCrossbuyersRegistrados: totalMultimarcas,
 
-      // Métricas de compras nas planilhas de marca
-      totalRegistrados,
-      totalRegistradosBaseBoticario,
-      totalCrossbuyersRegistrados, // Multimarcas
+      totalFaturados: 0,
+      totalFaturadosBaseBoticario: 0,
+      totalCrossbuyersFaturados: 0,
 
-      // Métricas de Faturamento
-      totalFaturados,
-      totalFaturadosBaseBoticario,
-      totalCrossbuyersFaturados,
+      hasBillingData: false,
 
-      // Flag de disponibilidade
-      hasBillingData,
+      totalAtivosBaseBoticario: totalBaseBoticario,
+      totalCrossbuyersAtivos: totalMultimarcas,
 
-      // Aliases para compatibilidade
-      totalAtivosBaseBoticario: totalRegistradosBaseBoticario,
-      totalCrossbuyersAtivos: totalCrossbuyersRegistrados,
-
-      inconsistencies,
-      diagnosticoJoin: diagnostico,
+      inconsistencies: [],
+      diagnosticoJoin: {
+        totalRecebidos: geralTransactions.length,
+        excluidosPorCicloDiferente: 0,
+        excluidosPorCicloNulo: 0,
+        registrosProcessados: ativos.length,
+        porSetor: new Map(),
+      },
     };
+
+    console.log(`[AGGREGATE] Resultado: ${totalAtivos} ativos, ${totalBaseBoticario} base Boticário, ${totalMultimarcas} multimarcas`);
   }
 
   result.success = true;

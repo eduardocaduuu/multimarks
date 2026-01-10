@@ -7,10 +7,9 @@ import {
   BRANDS,
   BRAND_ORDER,
   ActiveRevendedoresUploadState,
-  ActiveRevendedorData,
 } from '@/types';
 import { parseFile } from '@/lib/parseFile';
-import { parseActiveRevendedoresFile } from '@/lib/parseActiveRevendedoresFile';
+import { parseGeralFile, GeralTransactionRow } from '@/lib/parseGeralFile';
 import { processAllBrands } from '@/lib/aggregate';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { UploadSection } from '@/components/UploadSection';
@@ -39,7 +38,7 @@ function App() {
   const [isProcessing, setIsProcessing] = useState(false);
   const [globalError, setGlobalError] = useState<string | null>(null);
   
-  // Active revendedores state
+  // Planilha Geral (transacional) state
   const [activeRevendedoresState, setActiveRevendedoresState] = useState<ActiveRevendedoresUploadState>({
     file: null,
     fileName: null,
@@ -48,8 +47,8 @@ function App() {
     rowCount: 0,
     hasCicloColumn: false,
   });
-  const [activeRevendedoresData, setActiveRevendedoresData] = useState<ActiveRevendedorData[]>([]);
-  
+  const [geralTransactions, setGeralTransactions] = useState<GeralTransactionRow[]>([]);
+
   // Selected ciclo state
   const [selectedCiclo, setSelectedCiclo] = useState<string | null>(null);
   const [availableCiclos, setAvailableCiclos] = useState<string[]>([]);
@@ -147,7 +146,7 @@ function App() {
         rowCount: 0,
         hasCicloColumn: false,
       });
-      setActiveRevendedoresData([]);
+      setGeralTransactions([]);
       setSelectedCiclo(null);
       setAvailableCiclos([]);
       return;
@@ -165,40 +164,24 @@ function App() {
     }));
 
     try {
-      const result = await parseActiveRevendedoresFile(file);
+      const result = await parseGeralFile(file);
 
       if (result.success) {
         setActiveRevendedoresState(prev => ({
           ...prev,
           status: 'loaded',
           error: null,
-          rowCount: result.activeRevendedores.length,
-          hasCicloColumn: result.hasCicloColumn,
+          rowCount: result.transactions.length,
+          hasCicloColumn: true, // Planilha Geral sempre tem CicloFaturamento
         }));
-        setActiveRevendedoresData(result.activeRevendedores);
-        
-        // Extract available ciclos
-        const ciclos = new Set<string>();
-        for (const active of result.activeRevendedores) {
-          if (active.cicloCaptacao) {
-            ciclos.add(active.cicloCaptacao);
-          }
-        }
-        
-        // Also get ciclos from brand items (prioritize from oBoticário)
-        const boticarioItems = brandItems.get('boticario') || [];
-        for (const item of boticarioItems) {
-          if (item.cicloCaptacao) {
-            ciclos.add(item.cicloCaptacao);
-          }
-        }
-        
-        const ciclosArray = Array.from(ciclos).sort();
-        setAvailableCiclos(ciclosArray);
-        
+        setGeralTransactions(result.transactions);
+
+        // Set available ciclos from planilha Geral
+        setAvailableCiclos(result.availableCiclos);
+
         // Auto-select first ciclo if available and no ciclo selected yet
-        if (ciclosArray.length > 0 && !selectedCiclo) {
-          setSelectedCiclo(ciclosArray[0]);
+        if (result.availableCiclos.length > 0 && !selectedCiclo) {
+          setSelectedCiclo(result.availableCiclos[0]);
         }
       } else {
         setActiveRevendedoresState(prev => ({
@@ -208,7 +191,7 @@ function App() {
           rowCount: 0,
           hasCicloColumn: false,
         }));
-        setActiveRevendedoresData([]);
+        setGeralTransactions([]);
       }
     } catch (err) {
       setActiveRevendedoresState(prev => ({
@@ -218,44 +201,26 @@ function App() {
         rowCount: 0,
         hasCicloColumn: false,
       }));
-      setActiveRevendedoresData([]);
+      setGeralTransactions([]);
     }
-  }, [brandItems, selectedCiclo]);
+  }, [selectedCiclo]);
 
   const handleProcess = useCallback(async () => {
     setIsProcessing(true);
     setGlobalError(null);
 
     try {
-      // Update available ciclos from brand items before processing
-      const ciclosFromBrands = new Set<string>();
-      const boticarioItems = brandItems.get('boticario') || [];
-      for (const item of boticarioItems) {
-        if (item.cicloCaptacao) {
-          ciclosFromBrands.add(item.cicloCaptacao);
-        }
+      // Validar que temos ciclo selecionado
+      if (!selectedCiclo) {
+        setGlobalError('Selecione um ciclo de faturamento');
+        setIsProcessing(false);
+        return;
       }
-      
-      // Merge with ciclos from active file
-      for (const active of activeRevendedoresData) {
-        if (active.cicloCaptacao) {
-          ciclosFromBrands.add(active.cicloCaptacao);
-        }
-      }
-      
-      const allCiclos = Array.from(ciclosFromBrands).sort();
-      setAvailableCiclos(allCiclos);
-      
-      // Auto-select first ciclo if none selected
-      const cicloToUse = selectedCiclo || (allCiclos.length > 0 ? allCiclos[0] : null);
-      if (!selectedCiclo && allCiclos.length > 0) {
-        setSelectedCiclo(allCiclos[0]);
-      }
-      
+
       const result = processAllBrands(
         brandItems,
-        activeRevendedoresData.length > 0 ? activeRevendedoresData : undefined,
-        cicloToUse
+        geralTransactions.length > 0 ? geralTransactions : undefined,
+        selectedCiclo
       );
 
       if (result.success) {
@@ -269,7 +234,7 @@ function App() {
     } finally {
       setIsProcessing(false);
     }
-  }, [brandItems, activeRevendedoresData, selectedCiclo]);
+  }, [brandItems, geralTransactions, selectedCiclo]);
 
   const handleBackToUpload = useCallback(() => {
     setView('upload');
