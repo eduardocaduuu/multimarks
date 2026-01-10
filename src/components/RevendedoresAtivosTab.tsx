@@ -133,8 +133,8 @@ export function RevendedoresAtivosTab({
             )}
           </p>
           <p className="text-sm text-muted-foreground mt-1">
-            Total: {activeRevendedores.length.toLocaleString('pt-BR')} ativos •{' '}
-            {activeRevendedores.filter(a => a.existsInBoticario).length.toLocaleString('pt-BR')} base oBoticário •{' '}
+            Total: {activeRevendedores.filter(a => a.hasPurchasesInCiclo).length.toLocaleString('pt-BR')} ativos com vendas •{' '}
+            {activeRevendedores.filter(a => a.hasPurchasesInCiclo && a.existsInBoticario).length.toLocaleString('pt-BR')} base oBoticário •{' '}
             {activeRevendedores.filter(a => a.isCrossbuyer).length.toLocaleString('pt-BR')} crossbuyers
           </p>
         </div>
@@ -311,19 +311,19 @@ export function RevendedoresAtivosTab({
             <CardContent className="space-y-3">
               {/* Badges */}
               <div className="flex flex-wrap gap-2">
-                {active.existsInBoticario ? (
+                {active.existsInBoticario && (
                   <Badge variant="default" className="bg-boticario">
                     Base oBoticário
-                  </Badge>
-                ) : (
-                  <Badge variant="secondary">
-                    <AlertCircle className="w-3 h-3 mr-1" />
-                    Sem oBoticário
                   </Badge>
                 )}
                 {active.isCrossbuyer && (
                   <Badge variant="default" className="bg-emerald-500">
                     Crossbuyer ({active.brandCount} marcas)
+                  </Badge>
+                )}
+                {!active.hasPurchasesInCiclo && (
+                  <Badge variant="outline" className="text-muted-foreground">
+                    Sem vendas no ciclo
                   </Badge>
                 )}
                 {active.inconsistencies.length > 0 && (

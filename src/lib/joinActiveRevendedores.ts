@@ -190,14 +190,10 @@ export function joinActiveRevendedores(
     }
 
     // Add inconsistencies
-    if (!existsInBoticario) {
-      activeInconsistencies.push('Ativo não existe no oBoticário (regra base)');
-      inconsistencies.push(
-        `Revendedor ativo "${active.nomeRevendedora}" (${active.codigoRevendedoraOriginal}) não existe no oBoticário`
-      );
-    }
+    // Nota: Não existir no oBoticário NÃO é mais uma inconsistência - é apenas informação
+    // O revendedor é considerado "ativo" se teve pelo menos 1 venda no ciclo em QUALQUER marca
 
-    if (selectedCiclo && !hasPurchasesInCiclo && existsInBoticario) {
+    if (selectedCiclo && !hasPurchasesInCiclo) {
       activeInconsistencies.push(
         `Revendedor ativo não tem compras no ciclo selecionado (${selectedCiclo})`
       );
@@ -246,6 +242,12 @@ export function joinActiveRevendedores(
 
 /**
  * Aggregate active revendedores by sector
+ *
+ * Nova lógica:
+ * - totalAtivos = revendedores que tiveram pelo menos 1 VENDA no ciclo (qualquer marca)
+ * - ativosBaseBoticario = dos ativos, quantos têm compra no O Boticário
+ * - crossbuyers = dos ativos com O Boticário, quantos compram em 2+ marcas
+ * - percentCrossbuyer = crossbuyers / ativosBaseBoticario (para refletir painel oficial)
  */
 export function aggregateActiveRevendedoresBySector(
   joined: ActiveRevendedorJoined[]
@@ -282,18 +284,26 @@ export function aggregateActiveRevendedoresBySector(
       sectorStats.set(setor, stats);
     }
 
-    stats.totalAtivos++;
+    // Ativo = teve pelo menos 1 venda no ciclo em qualquer marca
+    // (hasPurchasesInCiclo já está correto - verifica se há vendas em qualquer marca)
+    if (active.hasPurchasesInCiclo) {
+      stats.totalAtivos++;
+    }
+
+    // Sempre adicionar à lista para visualização (mesmo sem vendas no ciclo)
     stats.activeRevendedores.push(active);
 
-    if (active.existsInBoticario) {
+    // Base O Boticário: revendedores ativos que têm compra no O Boticário
+    if (active.hasPurchasesInCiclo && active.existsInBoticario) {
       stats.ativosBaseBoticario++;
     }
 
+    // Crossbuyer: revendedores com 2+ marcas E que existem no O Boticário
     if (active.isCrossbuyer) {
       stats.crossbuyers++;
     }
 
-    // Aggregate by brand
+    // Aggregate by brand (apenas se teve vendas)
     for (const [brandId, metrics] of active.brands.entries()) {
       stats.valorPorMarca[brandId] += metrics.totalValorVenda;
       stats.itensPorMarca[brandId] += metrics.totalItensVenda;
@@ -301,9 +311,10 @@ export function aggregateActiveRevendedoresBySector(
   }
 
   // Calculate percentages
+  // % Crossbuyer = crossbuyers / ativosBaseBoticario (conforme painel oficial)
   for (const stats of sectorStats.values()) {
     stats.percentCrossbuyer =
-      stats.totalAtivos > 0 ? (stats.crossbuyers / stats.totalAtivos) * 100 : 0;
+      stats.ativosBaseBoticario > 0 ? (stats.crossbuyers / stats.ativosBaseBoticario) * 100 : 0;
   }
 
   return sectorStats;

@@ -253,9 +253,12 @@ export function processAllBrands(
       }
     }
 
-    // Calculate totals
-    const totalAtivos = joined.length;
-    const totalAtivosBaseBoticario = joined.filter(a => a.existsInBoticario).length;
+    // Calculate totals - Nova lógica:
+    // - totalAtivos = revendedores que tiveram pelo menos 1 VENDA no ciclo (qualquer marca)
+    // - totalAtivosBaseBoticario = dos ativos, quantos têm compra no O Boticário
+    // - totalCrossbuyersAtivos = crossbuyers (2+ marcas E existe no O Boticário)
+    const totalAtivos = joined.filter(a => a.hasPurchasesInCiclo).length;
+    const totalAtivosBaseBoticario = joined.filter(a => a.hasPurchasesInCiclo && a.existsInBoticario).length;
     const totalCrossbuyersAtivos = joined.filter(a => a.isCrossbuyer).length;
 
     result.activeRevendedoresData = {

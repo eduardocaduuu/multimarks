@@ -394,12 +394,10 @@ export function AtivosNoCicloTab({
                   {selectedSectorRevendedores.map((active) => (
                     <Card
                       key={active.codigoRevendedora}
-                      className={`p-3 hover:bg-muted/50 transition-colors ${active.existsInBoticario ? 'cursor-pointer' : ''}`}
+                      className="p-3 hover:bg-muted/50 transition-colors cursor-pointer"
                       onClick={() => {
-                        if (active.existsInBoticario) {
-                          onRevendedorClick(active);
-                          setSelectedSector(null);
-                        }
+                        onRevendedorClick(active);
+                        setSelectedSector(null);
                       }}
                     >
                       <div className="flex items-center justify-between">
@@ -413,19 +411,19 @@ export function AtivosNoCicloTab({
                             )}
                           </div>
                           <div className="flex items-center gap-2 flex-wrap">
-                            {active.existsInBoticario ? (
+                            {active.existsInBoticario && (
                               <Badge variant="default" className="bg-boticario">
                                 Base oBoticário
-                              </Badge>
-                            ) : (
-                              <Badge variant="secondary">
-                                <AlertCircle className="w-3 h-3 mr-1" />
-                                Sem oBoticário
                               </Badge>
                             )}
                             {active.isCrossbuyer && (
                               <Badge variant="default" className="bg-emerald-500">
                                 Crossbuyer ({active.brandCount} marcas)
+                              </Badge>
+                            )}
+                            {!active.hasPurchasesInCiclo && (
+                              <Badge variant="outline" className="text-muted-foreground">
+                                Sem vendas no ciclo
                               </Badge>
                             )}
                             {active.inconsistencies.length > 0 && (
