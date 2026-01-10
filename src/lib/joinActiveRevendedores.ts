@@ -12,7 +12,12 @@ import {
 
 /**
  * Join active revendedores with brand purchases
- * Follows strict order: 1) CodigoRevendedora, 2) Fallback by NomeRevendedora normalized
+ *
+ * REGRA FUNDAMENTAL:
+ * - A planilha Geral é a ÚNICA fonte de verdade para "revendedor ativo"
+ * - TODOS os revendedores da planilha Geral são considerados ATIVOS
+ * - As planilhas de marca apenas ENRIQUECEM os dados (não criam ativos)
+ * - Revendedor multimarcas = ativo que comprou 2+ marcas no ciclo
  */
 export function joinActiveRevendedores(
   activeRevendedores: ActiveRevendedorData[],
@@ -29,20 +34,11 @@ export function joinActiveRevendedores(
 
   // DEBUG: Log para diagnóstico
   console.log('[JOIN] selectedCiclo:', selectedCiclo);
-  console.log('[JOIN] Total activeRevendedores:', activeRevendedores.length);
-  console.log('[JOIN] Total customers (com vendas):', customers.size);
+  console.log('[JOIN] Total activeRevendedores (da planilha Geral):', activeRevendedores.length);
+  console.log('[JOIN] Total customers (com vendas nas planilhas de marca):', customers.size);
 
-  // Diagnóstico de exclusões por ciclo
-  let excluidosPorCicloDiferente = 0;
+  // Diagnóstico por setor
   const porSetor = new Map<string, { total: number; excluidosPorCiclo: number }>();
-
-  // Note: In future, if brand items have codigoRevendedora, we could build:
-  // - customersByCodigo map for efficient lookup by codigo
-  // - codigoToNomeNormalized map for reverse lookup
-
-  // First, try to find customers by codigo from brand items
-  // Note: brand items don't have codigoRevendedora yet, so we'll use nome as fallback
-  // This is a limitation - we need to join primarily by nome
 
   // Build reverse map: normalized nome -> Customer
   const customersByNome = new Map<string, Customer>();
@@ -50,66 +46,46 @@ export function joinActiveRevendedores(
     customersByNome.set(customer.nomeRevendedoraNormalized, customer);
   }
 
-  // Process each active revendedor
-  // IMPORTANTE: Não filtramos por ciclo da planilha Geral!
-  // O que define "ativo no ciclo" é ter VENDA no ciclo (em qualquer marca),
-  // NÃO o ciclo cadastrado na planilha Geral.
+  // Process each active revendedor from planilha Geral
+  // REGRA: Todos da planilha Geral são ATIVOS por definição
   for (const active of activeRevendedores) {
     const setor = active.setor || 'Não informado';
 
-    // Rastrear total por setor (todos da planilha Geral)
+    // Rastrear total por setor (todos da planilha Geral = ativos)
     if (!porSetor.has(setor)) {
       porSetor.set(setor, { total: 0, excluidosPorCiclo: 0 });
     }
     porSetor.get(setor)!.total++;
 
-    let matchedCustomer: Customer | null = null;
-
-    // Step 1: Try to match by CodigoRevendedora
-    // Since brand items don't have codigoRevendedora, we can't match by codigo directly
-    // This is a limitation - we'll use nome as primary matching
-    // In a real scenario, brand items would have codigoRevendedora column
-
-    // Step 2: Fallback - match by NomeRevendedora normalized
-    matchedCustomer = customersByNome.get(active.nomeRevendedoraNormalized) || null;
+    // Tentar encontrar compras deste revendedor nas planilhas de marca
+    const matchedCustomer = customersByNome.get(active.nomeRevendedoraNormalized) || null;
 
     // Build brand purchases for this active revendedor
     const brands = new Map<BrandId, CustomerBrandMetrics>();
     let existsInBoticario = false;
-    let hasPurchasesInCiclo = false;
     const activeInconsistencies: string[] = [];
 
-    // If matched by nome, use customer's brands
+    // Se encontrou nas planilhas de marca, enriquecer com dados de compra
     if (matchedCustomer) {
       existsInBoticario = matchedCustomer.brands.has('boticario');
 
-      // Filter by selected ciclo if provided
+      // Processar cada marca
       for (const [brandId, metrics] of matchedCustomer.brands.entries()) {
-        // Filter items by ciclo if selected
+        // Filtrar por ciclo se selecionado
         const filteredItems = selectedCiclo
           ? metrics.items.filter(item => item.cicloCaptacao === selectedCiclo)
           : metrics.items;
 
-        // Only include Venda type
+        // Apenas tipo Venda
         const vendaItems = filteredItems.filter(item => item.tipo === 'Venda');
 
         if (vendaItems.length > 0) {
-          hasPurchasesInCiclo = true;
-
-          // Recalculate metrics for filtered items
           let totalItensVenda = 0;
           let totalValorVenda = 0;
 
           for (const item of vendaItems) {
             totalItensVenda += item.quantidadeItens;
             totalValorVenda += item.valorPraticado;
-
-            // Check for setor divergence
-            if (item.setor !== active.setor) {
-              activeInconsistencies.push(
-                `Setor divergente: ativo tem "${active.setor}" mas compra tem "${item.setor}"`
-              );
-            }
           }
 
           brands.set(brandId, {
@@ -127,43 +103,27 @@ export function joinActiveRevendedores(
         }
       }
     } else {
-      // No match found - try to find purchases by codigo or nome in brand items directly
-      // This is a fallback if customer wasn't in the base (shouldn't happen if rules are correct)
-
-      // Search brand items for this revendedor
+      // Fallback: buscar diretamente nas planilhas de marca
       for (const brandId of BRAND_ORDER) {
         const items = brandItems.get(brandId) || [];
         const matchingItems: Item[] = [];
 
         for (const item of items) {
-          // Match by normalized nome
           if (item.nomeRevendedoraNormalized === active.nomeRevendedoraNormalized) {
-            // Filter by ciclo if selected
             if (selectedCiclo && item.cicloCaptacao !== selectedCiclo) {
               continue;
             }
-
-            // Only include Venda type
             if (item.tipo === 'Venda') {
               matchingItems.push(item);
-
-              // Check for setor divergence
-              if (item.setor !== active.setor) {
-                activeInconsistencies.push(
-                  `Setor divergente: ativo tem "${active.setor}" mas compra tem "${item.setor}"`
-                );
-              }
             }
           }
         }
 
         if (matchingItems.length > 0) {
-          hasPurchasesInCiclo = true;
           if (brandId === 'boticario') {
             existsInBoticario = true;
           }
 
-          // Calculate metrics
           let totalItensVenda = 0;
           let totalValorVenda = 0;
 
@@ -188,16 +148,6 @@ export function joinActiveRevendedores(
       }
     }
 
-    // Add inconsistencies
-    // Nota: Não existir no oBoticário NÃO é mais uma inconsistência - é apenas informação
-    // O revendedor é considerado "ativo" se teve pelo menos 1 venda no ciclo em QUALQUER marca
-
-    if (selectedCiclo && !hasPurchasesInCiclo) {
-      activeInconsistencies.push(
-        `Revendedor ativo não tem compras no ciclo selecionado (${selectedCiclo})`
-      );
-    }
-
     // Calculate totals
     let totalValorVendaAllBrands = 0;
     let totalItensVendaAllBrands = 0;
@@ -207,12 +157,10 @@ export function joinActiveRevendedores(
       totalItensVendaAllBrands += metrics.totalItensVenda;
     }
 
-    // Calcular métricas de VENDA REGISTRADA (Tipo=Venda)
-    const hasVendaRegistrada = selectedCiclo ? hasPurchasesInCiclo : (brands.size > 0);
-    const isCrossbuyerRegistrado = brands.size >= 2 && existsInBoticario;
+    // REGRA: Multimarcas = comprou 2+ marcas diferentes no ciclo
+    const isMultimarcas = brands.size >= 2;
 
-    // Calcular métricas de FATURAMENTO (isFaturado=true)
-    // Contar marcas onde há pelo menos 1 item faturado
+    // Métricas de faturamento (se disponível)
     let brandsWithFaturamento = 0;
     let hasVendaFaturada = false;
 
@@ -224,12 +172,7 @@ export function joinActiveRevendedores(
       }
     }
 
-    const isCrossbuyerFaturado = brandsWithFaturamento >= 2 && existsInBoticario;
-
-    // DEBUG: Log para setores específicos
-    if (setor.includes('INICIOS CENTRAL') || setor.includes('PRATA')) {
-      console.log(`[DEBUG SETOR] ${setor}: ${active.nomeRevendedora} | matched=${!!matchedCustomer} | brands=${brands.size} | registrado=${hasVendaRegistrada} | faturado=${hasVendaFaturada}`);
-    }
+    const isMultimarcasFaturado = brandsWithFaturamento >= 2;
 
     joined.push({
       codigoRevendedora: active.codigoRevendedora,
@@ -243,15 +186,15 @@ export function joinActiveRevendedores(
       totalValorVendaAllBrands,
       totalItensVendaAllBrands,
       existsInBoticario,
-      // Métricas de Venda Registrada
-      hasVendaRegistrada,
-      isCrossbuyerRegistrado,
+      // Métricas - todos são ativos (da planilha Geral)
+      hasVendaRegistrada: brands.size > 0, // Tem compras nas planilhas de marca
+      isCrossbuyerRegistrado: isMultimarcas, // Comprou 2+ marcas (multimarcas)
       // Métricas de Faturamento
       hasVendaFaturada,
-      isCrossbuyerFaturado,
+      isCrossbuyerFaturado: isMultimarcasFaturado,
       // Aliases para compatibilidade
-      hasPurchasesInCiclo: hasVendaRegistrada,
-      isCrossbuyer: isCrossbuyerRegistrado,
+      hasPurchasesInCiclo: brands.size > 0,
+      isCrossbuyer: isMultimarcas,
       inconsistencies: activeInconsistencies,
     });
   }
@@ -259,8 +202,8 @@ export function joinActiveRevendedores(
   // Criar diagnóstico
   const diagnostico: JoinDiagnostico = {
     totalRecebidos: activeRevendedores.length,
-    excluidosPorCicloDiferente,
-    excluidosPorCicloNulo: 0, // Não excluímos mais por ciclo nulo
+    excluidosPorCicloDiferente: 0,
+    excluidosPorCicloNulo: 0,
     registrosProcessados: joined.length,
     porSetor,
   };
@@ -271,18 +214,12 @@ export function joinActiveRevendedores(
 /**
  * Aggregate active revendedores by sector
  *
- * Nova lógica com duas métricas:
- * 1. VENDA REGISTRADA (captação/pedidos):
- *    - totalRegistrados = revendedores com venda registrada (Tipo=Venda) no ciclo
- *    - registradosBaseBoticario = que existem no O Boticário
- *    - crossbuyersRegistrados = 2+ marcas com venda registrada
+ * REGRA FUNDAMENTAL:
+ * - totalAtivos = TODOS os revendedores da planilha Geral naquele setor
+ * - totalMultimarcas = ativos que compraram 2+ marcas no ciclo
+ * - % multimarcas = totalMultimarcas / totalAtivos
  *
- * 2. FATURAMENTO (quando disponível):
- *    - totalFaturados = revendedores com venda faturada no ciclo
- *    - faturadosBaseBoticario = que existem no O Boticário
- *    - crossbuyersFaturados = 2+ marcas com venda faturada
- *
- * Gap = Registrados - Faturados
+ * Os números DEVEM bater 1:1 com o painel oficial.
  */
 export function aggregateActiveRevendedoresBySector(
   joined: ActiveRevendedorJoined[]
@@ -296,10 +233,12 @@ export function aggregateActiveRevendedoresBySector(
     if (!stats) {
       stats = {
         setor,
-        // Métricas de Venda Registrada
-        totalRegistrados: 0,
+        // ATIVOS = todos da planilha Geral (não depende de ter compra)
+        totalAtivos: 0,
+        // Métricas de compras nas planilhas de marca
+        totalRegistrados: 0,      // Ativos que têm compras registradas
         registradosBaseBoticario: 0,
-        crossbuyersRegistrados: 0,
+        crossbuyersRegistrados: 0, // Multimarcas (2+ marcas)
         percentCrossbuyerRegistrados: 0,
         // Métricas de Faturamento
         totalFaturados: 0,
@@ -309,7 +248,6 @@ export function aggregateActiveRevendedoresBySector(
         // Gap Analysis
         gapRegistradoFaturado: 0,
         // Aliases para compatibilidade
-        totalAtivos: 0,
         ativosBaseBoticario: 0,
         crossbuyers: 0,
         percentCrossbuyer: 0,
@@ -333,10 +271,13 @@ export function aggregateActiveRevendedoresBySector(
       sectorStats.set(setor, stats);
     }
 
-    // Sempre adicionar à lista para visualização
+    // REGRA: Cada revendedor da planilha Geral = 1 ativo
+    stats.totalAtivos++;
+
+    // Adicionar à lista para visualização
     stats.activeRevendedores.push(active);
 
-    // --- VENDA REGISTRADA ---
+    // --- COMPRAS NAS PLANILHAS DE MARCA ---
     if (active.hasVendaRegistrada) {
       stats.totalRegistrados++;
 
@@ -345,6 +286,7 @@ export function aggregateActiveRevendedoresBySector(
       }
     }
 
+    // Multimarcas = comprou 2+ marcas
     if (active.isCrossbuyerRegistrado) {
       stats.crossbuyersRegistrados++;
     }
@@ -362,39 +304,38 @@ export function aggregateActiveRevendedoresBySector(
       stats.crossbuyersFaturados++;
     }
 
-    // Aggregate by brand (vendas registradas)
+    // Agregar valores por marca (apenas para ativos com compras)
     for (const [brandId, metrics] of active.brands.entries()) {
       stats.valorPorMarca[brandId] += metrics.totalValorVenda;
       stats.itensPorMarca[brandId] += metrics.totalItensVenda;
     }
   }
 
-  // Calculate percentages and gap
+  // Calculate percentages
   for (const stats of sectorStats.values()) {
-    // % Crossbuyer Registrados
+    // % Multimarcas sobre ATIVOS (não sobre registrados)
     stats.percentCrossbuyerRegistrados =
-      stats.registradosBaseBoticario > 0
-        ? (stats.crossbuyersRegistrados / stats.registradosBaseBoticario) * 100
+      stats.totalAtivos > 0
+        ? (stats.crossbuyersRegistrados / stats.totalAtivos) * 100
         : 0;
 
-    // % Crossbuyer Faturados
+    // % Multimarcas Faturados sobre totalFaturados
     stats.percentCrossbuyerFaturados =
-      stats.faturadosBaseBoticario > 0
-        ? (stats.crossbuyersFaturados / stats.faturadosBaseBoticario) * 100
+      stats.totalFaturados > 0
+        ? (stats.crossbuyersFaturados / stats.totalFaturados) * 100
         : 0;
 
     // Gap
     stats.gapRegistradoFaturado = stats.totalRegistrados - stats.totalFaturados;
 
-    // Aliases para compatibilidade (apontam para Registrados)
-    stats.totalAtivos = stats.totalRegistrados;
+    // Aliases para compatibilidade
     stats.ativosBaseBoticario = stats.registradosBaseBoticario;
     stats.crossbuyers = stats.crossbuyersRegistrados;
     stats.percentCrossbuyer = stats.percentCrossbuyerRegistrados;
 
     // DEBUG: Log para setores específicos
     if (stats.setor.includes('INICIOS CENTRAL') || stats.setor.includes('PRATA')) {
-      console.log(`[DEBUG AGREGACAO] ${stats.setor}: registrados=${stats.totalRegistrados} | faturados=${stats.totalFaturados} | gap=${stats.gapRegistradoFaturado}`);
+      console.log(`[DEBUG AGREGACAO] ${stats.setor}: totalAtivos=${stats.totalAtivos} | multimarcas=${stats.crossbuyersRegistrados} | %=${stats.percentCrossbuyerRegistrados.toFixed(1)}%`);
     }
   }
 

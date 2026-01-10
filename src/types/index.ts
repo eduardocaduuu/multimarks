@@ -227,8 +227,10 @@ export interface ProcessingResult {
     // Flag indicando se dados de faturamento estão disponíveis
     hasBillingData: boolean;
 
+    // REGRA: totalAtivos = TODOS da planilha Geral (não depende de ter compra)
+    totalAtivos: number;
+
     // Aliases para compatibilidade
-    totalAtivos: number; // = totalRegistrados
     totalAtivosBaseBoticario: number; // = totalRegistradosBaseBoticario
     totalCrossbuyersAtivos: number; // = totalCrossbuyersRegistrados
 
@@ -288,14 +290,17 @@ export interface ActiveRevendedorJoined {
 export interface SectorActiveStats {
   setor: string;
 
-  // Métricas de VENDA REGISTRADA (captação/pedidos)
-  totalRegistrados: number; // Revendedores com venda registrada no ciclo
+  // REGRA: totalAtivos = TODOS da planilha Geral neste setor (não depende de ter compra)
+  totalAtivos: number;
+
+  // Métricas de compras nas planilhas de marca
+  totalRegistrados: number; // Ativos com compras registradas
   registradosBaseBoticario: number; // Que existem no oBoticário
-  crossbuyersRegistrados: number; // Crossbuyers entre os registrados
-  percentCrossbuyerRegistrados: number;
+  crossbuyersRegistrados: number; // Multimarcas (2+ marcas)
+  percentCrossbuyerRegistrados: number; // % sobre totalAtivos
 
   // Métricas de FATURAMENTO (quando disponível)
-  totalFaturados: number; // Revendedores com venda faturada no ciclo
+  totalFaturados: number; // Ativos com venda faturada no ciclo
   faturadosBaseBoticario: number;
   crossbuyersFaturados: number;
   percentCrossbuyerFaturados: number;
@@ -303,8 +308,7 @@ export interface SectorActiveStats {
   // Gap Analysis
   gapRegistradoFaturado: number; // totalRegistrados - totalFaturados
 
-  // Aliases para compatibilidade (apontam para Registrados)
-  totalAtivos: number; // = totalRegistrados
+  // Aliases para compatibilidade
   ativosBaseBoticario: number; // = registradosBaseBoticario
   crossbuyers: number; // = crossbuyersRegistrados
   percentCrossbuyer: number; // = percentCrossbuyerRegistrados

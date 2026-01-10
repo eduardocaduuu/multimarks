@@ -246,18 +246,15 @@ export function processAllBrands(
       }
     }
 
-    // Calculate totals - Nova lógica com duas métricas:
-    // 1. VENDA REGISTRADA (captação/pedidos):
-    //    - totalRegistrados = revendedores com venda registrada no ciclo
-    //    - registradosBaseBoticario = que existem no O Boticário
-    //    - crossbuyersRegistrados = 2+ marcas com venda registrada
-    //
-    // 2. FATURAMENTO (quando disponível):
-    //    - totalFaturados = revendedores com venda faturada no ciclo
-    //    - faturadosBaseBoticario = que existem no O Boticário
-    //    - crossbuyersFaturados = 2+ marcas com venda faturada
+    // REGRA FUNDAMENTAL:
+    // - totalAtivos = TODOS os revendedores da planilha Geral
+    // - totalMultimarcas = ativos que compraram 2+ marcas no ciclo
+    // - % multimarcas = totalMultimarcas / totalAtivos
 
-    // Métricas de Venda Registrada
+    // Total de ATIVOS = todos da planilha Geral (não depende de ter compra)
+    const totalAtivos = joined.length;
+
+    // Métricas de compras nas planilhas de marca
     const totalRegistrados = joined.filter(a => a.hasVendaRegistrada).length;
     const totalRegistradosBaseBoticario = joined.filter(a => a.hasVendaRegistrada && a.existsInBoticario).length;
     const totalCrossbuyersRegistrados = joined.filter(a => a.isCrossbuyerRegistrado).length;
@@ -289,10 +286,13 @@ export function processAllBrands(
       selectedCiclo: selectedCiclo || null,
       availableCiclosFromActive: Array.from(availableCiclosFromActive).sort(),
 
-      // Métricas de Venda Registrada
+      // REGRA: totalAtivos = TODOS da planilha Geral
+      totalAtivos,
+
+      // Métricas de compras nas planilhas de marca
       totalRegistrados,
       totalRegistradosBaseBoticario,
-      totalCrossbuyersRegistrados,
+      totalCrossbuyersRegistrados, // Multimarcas
 
       // Métricas de Faturamento
       totalFaturados,
@@ -303,7 +303,6 @@ export function processAllBrands(
       hasBillingData,
 
       // Aliases para compatibilidade
-      totalAtivos: totalRegistrados,
       totalAtivosBaseBoticario: totalRegistradosBaseBoticario,
       totalCrossbuyersAtivos: totalCrossbuyersRegistrados,
 
