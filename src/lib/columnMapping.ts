@@ -13,6 +13,23 @@ const EXPECTED_COLUMNS = {
   valorPraticado: ['valorpraticado', 'valor praticado', 'valor', 'preco', 'valor_praticado', 'valortotal', 'valor total'],
   meioCaptacao: ['meiocaptacao', 'meio captacao', 'meio', 'meio_captacao', 'canal'],
   tipoEntrega: ['tipoentrega', 'tipo entrega', 'entrega', 'tipo_entrega', 'modalidade entrega'],
+  // Colunas opcionais de faturamento
+  statusFaturamento: [
+    'statusfaturamento', 'status faturamento', 'status_faturamento',
+    'statuspedido', 'status pedido', 'status_pedido', 'status',
+    'situacao', 'situacaopedido', 'situacao pedido',
+    'faturado', 'faturamento'
+  ],
+  cicloFaturamento: [
+    'ciclofaturamento', 'ciclo faturamento', 'ciclo_faturamento',
+    'ciclofat', 'ciclo fat', 'ciclo_fat'
+  ],
+  dataFaturamento: [
+    'datafaturamento', 'data faturamento', 'data_faturamento',
+    'dtfaturamento', 'dt faturamento', 'dt_faturamento',
+    'datanf', 'data nf', 'data_nf',
+    'dataemissao', 'data emissao', 'data_emissao'
+  ],
 };
 
 // Required columns that must be present
@@ -77,6 +94,9 @@ function findBestMatch(
   return null;
 }
 
+// Colunas de faturamento (todas opcionais)
+const BILLING_COLUMNS = ['statusFaturamento', 'cicloFaturamento', 'dataFaturamento'];
+
 /**
  * Map spreadsheet headers to expected columns
  */
@@ -84,6 +104,7 @@ export function mapColumns(headers: string[]): {
   mapping: ColumnMapping;
   missingRequired: string[];
   warnings: string[];
+  billingColumnsDetected: string[];
 } {
   const mapping: ColumnMapping = {
     setor: null,
@@ -96,10 +117,14 @@ export function mapColumns(headers: string[]): {
     valorPraticado: null,
     meioCaptacao: null,
     tipoEntrega: null,
+    statusFaturamento: null,
+    cicloFaturamento: null,
+    dataFaturamento: null,
   };
 
   const usedHeaders = new Set<string>();
   const warnings: string[] = [];
+  const billingColumnsDetected: string[] = [];
 
   // Map each expected column
   for (const [key, variants] of Object.entries(EXPECTED_COLUMNS)) {
@@ -107,6 +132,11 @@ export function mapColumns(headers: string[]): {
     if (match) {
       mapping[key as keyof ColumnMapping] = match;
       usedHeaders.add(match);
+
+      // Track billing columns
+      if (BILLING_COLUMNS.includes(key)) {
+        billingColumnsDetected.push(key);
+      }
     }
   }
 
@@ -118,16 +148,18 @@ export function mapColumns(headers: string[]): {
     }
   }
 
-  // Add warnings for optional missing columns
+  // Add warnings for optional missing columns (exclude billing columns from warning)
   const optionalMissing = Object.keys(EXPECTED_COLUMNS).filter(
-    col => !REQUIRED_COLUMNS.includes(col) && !mapping[col as keyof ColumnMapping]
+    col => !REQUIRED_COLUMNS.includes(col) &&
+           !BILLING_COLUMNS.includes(col) &&
+           !mapping[col as keyof ColumnMapping]
   );
 
   if (optionalMissing.length > 0) {
     warnings.push(`Colunas opcionais não encontradas: ${optionalMissing.join(', ')}`);
   }
 
-  return { mapping, missingRequired, warnings };
+  return { mapping, missingRequired, warnings, billingColumnsDetected };
 }
 
 /**
@@ -145,6 +177,9 @@ export function getColumnDisplayName(key: keyof ColumnMapping): string {
     valorPraticado: 'ValorPraticado',
     meioCaptacao: 'Meio Captacao',
     tipoEntrega: 'Tipo Entrega',
+    statusFaturamento: 'Status Faturamento',
+    cicloFaturamento: 'Ciclo Faturamento',
+    dataFaturamento: 'Data Faturamento',
   };
   return displayNames[key] || key;
 }

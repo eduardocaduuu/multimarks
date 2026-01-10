@@ -174,7 +174,7 @@ export function ResultsDashboard({ result, onBack: _onBack }: ResultsDashboardPr
           <p className="text-muted-foreground text-sm">
             {result.stats.crossBuyerCount.toLocaleString('pt-BR')} clientes compraram em 2 ou mais marcas
             {hasActiveRevendedores && result.activeRevendedoresData && (
-              <> • {result.activeRevendedoresData.totalAtivos.toLocaleString('pt-BR')} revendedores ativos</>
+              <> • {result.activeRevendedoresData.totalRegistrados.toLocaleString('pt-BR')} com venda registrada</>
             )}
           </p>
         </div>
@@ -222,7 +222,7 @@ export function ResultsDashboard({ result, onBack: _onBack }: ResultsDashboardPr
           {hasActiveRevendedores && (
             <TabsTrigger value="ativos-ciclo" className="gap-2">
               <Building2 className="w-4 h-4" />
-              Ativos no Ciclo
+              Venda Registrada
             </TabsTrigger>
           )}
           {hasActiveRevendedores && (
@@ -262,13 +262,14 @@ export function ResultsDashboard({ result, onBack: _onBack }: ResultsDashboardPr
           />
         </TabsContent>
 
-        {/* Tab 2: Ativos no Ciclo (NOVA) */}
+        {/* Tab 2: Venda Registrada (por setor) */}
         {hasActiveRevendedores && result.activeRevendedoresData && (
           <TabsContent value="ativos-ciclo" className="mt-6">
             <AtivosNoCicloTab
               sectorStats={result.activeRevendedoresData.sectorStats}
               selectedCiclo={result.activeRevendedoresData.selectedCiclo}
               diagnosticoJoin={result.activeRevendedoresData.diagnosticoJoin}
+              hasBillingData={result.activeRevendedoresData.hasBillingData}
               onRevendedorClick={(active) => {
                 // Find customer by nome and open detail
                 const customer = result.customers.find(

@@ -246,22 +246,67 @@ export function processAllBrands(
       }
     }
 
-    // Calculate totals - Nova lógica:
-    // - totalAtivos = revendedores que tiveram pelo menos 1 VENDA no ciclo (qualquer marca)
-    // - totalAtivosBaseBoticario = dos ativos, quantos têm compra no O Boticário
-    // - totalCrossbuyersAtivos = crossbuyers (2+ marcas E existe no O Boticário)
-    const totalAtivos = joined.filter(a => a.hasPurchasesInCiclo).length;
-    const totalAtivosBaseBoticario = joined.filter(a => a.hasPurchasesInCiclo && a.existsInBoticario).length;
-    const totalCrossbuyersAtivos = joined.filter(a => a.isCrossbuyer).length;
+    // Calculate totals - Nova lógica com duas métricas:
+    // 1. VENDA REGISTRADA (captação/pedidos):
+    //    - totalRegistrados = revendedores com venda registrada no ciclo
+    //    - registradosBaseBoticario = que existem no O Boticário
+    //    - crossbuyersRegistrados = 2+ marcas com venda registrada
+    //
+    // 2. FATURAMENTO (quando disponível):
+    //    - totalFaturados = revendedores com venda faturada no ciclo
+    //    - faturadosBaseBoticario = que existem no O Boticário
+    //    - crossbuyersFaturados = 2+ marcas com venda faturada
+
+    // Métricas de Venda Registrada
+    const totalRegistrados = joined.filter(a => a.hasVendaRegistrada).length;
+    const totalRegistradosBaseBoticario = joined.filter(a => a.hasVendaRegistrada && a.existsInBoticario).length;
+    const totalCrossbuyersRegistrados = joined.filter(a => a.isCrossbuyerRegistrado).length;
+
+    // Métricas de Faturamento
+    const totalFaturados = joined.filter(a => a.hasVendaFaturada).length;
+    const totalFaturadosBaseBoticario = joined.filter(a => a.hasVendaFaturada && a.existsInBoticario).length;
+    const totalCrossbuyersFaturados = joined.filter(a => a.isCrossbuyerFaturado).length;
+
+    // Detectar se há dados de faturamento disponíveis
+    // (verificar se algum item tem isFaturado definido)
+    let hasBillingData = false;
+    for (const brandId of BRAND_ORDER) {
+      const items = brandItems.get(brandId);
+      if (items) {
+        for (const item of items) {
+          if (item.isFaturado !== undefined) {
+            hasBillingData = true;
+            break;
+          }
+        }
+        if (hasBillingData) break;
+      }
+    }
 
     result.activeRevendedoresData = {
       activeRevendedores: joined,
       sectorStats,
       selectedCiclo: selectedCiclo || null,
       availableCiclosFromActive: Array.from(availableCiclosFromActive).sort(),
-      totalAtivos,
-      totalAtivosBaseBoticario,
-      totalCrossbuyersAtivos,
+
+      // Métricas de Venda Registrada
+      totalRegistrados,
+      totalRegistradosBaseBoticario,
+      totalCrossbuyersRegistrados,
+
+      // Métricas de Faturamento
+      totalFaturados,
+      totalFaturadosBaseBoticario,
+      totalCrossbuyersFaturados,
+
+      // Flag de disponibilidade
+      hasBillingData,
+
+      // Aliases para compatibilidade
+      totalAtivos: totalRegistrados,
+      totalAtivosBaseBoticario: totalRegistradosBaseBoticario,
+      totalCrossbuyersAtivos: totalCrossbuyersRegistrados,
+
       inconsistencies,
       diagnosticoJoin: diagnostico,
     };

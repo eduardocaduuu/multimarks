@@ -297,13 +297,18 @@ export function exportCrossBuyersXLSX(customers: Customer[]) {
  * Export active revendedores as CSV
  */
 export function exportActiveRevendedoresCSV(activeRevendedores: ActiveRevendedorJoined[]) {
+  // Check if any revendedor has billing data
+  const hasBillingData = activeRevendedores.some(a => a.hasVendaFaturada !== undefined);
+
   const headers = [
     'Setor',
     'CodigoRevendedora',
     'NomeRevendedora',
     'Ciclo',
     'Marcas',
-    'ÉCrossbuyer',
+    'VendaRegistrada',
+    'ÉCrossbuyerRegistrado',
+    ...(hasBillingData ? ['VendaFaturada', 'ÉCrossbuyerFaturado'] : []),
     'BaseOBoticario',
     'ItensVenda',
     'ValorVenda',
@@ -317,34 +322,52 @@ export function exportActiveRevendedoresCSV(activeRevendedores: ActiveRevendedor
 
     const inconsistências = active.inconsistencies.join(' | ');
 
-    return [
+    const baseRow = [
       active.setor,
       active.codigoRevendedoraOriginal || active.codigoRevendedora,
       active.nomeRevendedora,
       active.cicloCaptacao || '',
       marcas || '',
-      active.isCrossbuyer ? 'Sim' : 'Não',
+      active.hasVendaRegistrada ? 'Sim' : 'Não',
+      active.isCrossbuyerRegistrado ? 'Sim' : 'Não',
+    ];
+
+    if (hasBillingData) {
+      baseRow.push(
+        active.hasVendaFaturada ? 'Sim' : 'Não',
+        active.isCrossbuyerFaturado ? 'Sim' : 'Não'
+      );
+    }
+
+    baseRow.push(
       active.existsInBoticario ? 'Sim' : 'Não',
       active.totalItensVendaAllBrands.toString(),
       formatNumber(active.totalValorVendaAllBrands),
-      inconsistências || '',
-    ];
+      inconsistências || ''
+    );
+
+    return baseRow;
   });
 
   const csv = generateCSV(headers, rows);
-  downloadFile(csv, 'revendedores_ativos.csv', 'text/csv;charset=utf-8');
+  downloadFile(csv, 'revendedores_venda_registrada.csv', 'text/csv;charset=utf-8');
 }
 
 /**
  * Export active revendedores by sector as CSV
  */
 export function exportAtivosPorSetorCSV(sectorStats: SectorActiveStats[]) {
+  // Check if any sector has billing data
+  const hasBillingData = sectorStats.some(s => s.totalFaturados > 0 || s.gapRegistradoFaturado !== 0);
+
   const headers = [
     'Setor',
-    'TotalAtivos',
-    'AtivosBaseOBoticario',
-    'Crossbuyers',
-    'PercentualCrossbuyer',
+    'TotalRegistrados',
+    ...(hasBillingData ? ['TotalFaturados', 'Gap'] : []),
+    'BaseOBoticario',
+    'CrossbuyersRegistrados',
+    'PercentualCrossbuyerRegistrados',
+    ...(hasBillingData ? ['CrossbuyersFaturados', 'PercentualCrossbuyerFaturados'] : []),
     'ValorTotal',
     'ItensTotal',
     ...BRAND_ORDER.map(b => `${BRANDS[b].shortName} (Valor)`),
@@ -357,29 +380,54 @@ export function exportAtivosPorSetorCSV(sectorStats: SectorActiveStats[]) {
     const valorTotal = Object.values(sector.valorPorMarca).reduce((sum, v) => sum + v, 0);
     const itensTotal = Object.values(sector.itensPorMarca).reduce((sum, v) => sum + v, 0);
 
-    return [
+    const baseRow = [
       sector.setor,
-      sector.totalAtivos.toString(),
-      sector.ativosBaseBoticario.toString(),
-      sector.crossbuyers.toString(),
-      sector.percentCrossbuyer.toFixed(2) + '%',
+      sector.totalRegistrados.toString(),
+    ];
+
+    if (hasBillingData) {
+      baseRow.push(
+        sector.totalFaturados.toString(),
+        sector.gapRegistradoFaturado.toString()
+      );
+    }
+
+    baseRow.push(
+      sector.registradosBaseBoticario.toString(),
+      sector.crossbuyersRegistrados.toString(),
+      sector.percentCrossbuyerRegistrados.toFixed(2) + '%'
+    );
+
+    if (hasBillingData) {
+      baseRow.push(
+        sector.crossbuyersFaturados.toString(),
+        sector.percentCrossbuyerFaturados.toFixed(2) + '%'
+      );
+    }
+
+    baseRow.push(
       formatNumber(valorTotal),
       itensTotal.toString(),
       ...brandValues,
-      ...brandItems,
-    ];
+      ...brandItems
+    );
+
+    return baseRow;
   });
 
   const csv = generateCSV(headers, rows);
-  downloadFile(csv, 'ativos_por_setor.csv', 'text/csv;charset=utf-8');
+  downloadFile(csv, 'revendedores_por_setor.csv', 'text/csv;charset=utf-8');
 }
 
 /**
  * Export active crossbuyers as CSV
  */
 export function exportCrossbuyersAtivosCSV(activeRevendedores: ActiveRevendedorJoined[]) {
-  // Filter only crossbuyers
-  const crossbuyers = activeRevendedores.filter(a => a.isCrossbuyer && a.existsInBoticario);
+  // Filter only crossbuyers (registered)
+  const crossbuyers = activeRevendedores.filter(a => a.isCrossbuyerRegistrado && a.existsInBoticario);
+
+  // Check if any revendedor has billing data
+  const hasBillingData = crossbuyers.some(a => a.hasVendaFaturada !== undefined);
 
   const headers = [
     'Setor',
@@ -387,6 +435,7 @@ export function exportCrossbuyersAtivosCSV(activeRevendedores: ActiveRevendedorJ
     'NomeRevendedora',
     'Ciclo',
     'QtdMarcas',
+    ...(hasBillingData ? ['Faturado', 'CrossbuyerFaturado'] : []),
     ...BRAND_ORDER.map(b => `${BRANDS[b].shortName} (Valor)`),
     ...BRAND_ORDER.map(b => `${BRANDS[b].shortName} (Itens)`),
     'TotalValor',
@@ -407,20 +456,32 @@ export function exportCrossbuyersAtivosCSV(activeRevendedores: ActiveRevendedorJ
 
     const inconsistências = active.inconsistencies.join(' | ');
 
-    return [
+    const baseRow = [
       active.setor,
       active.codigoRevendedoraOriginal || active.codigoRevendedora,
       active.nomeRevendedora,
       active.cicloCaptacao || '',
       active.brandCount.toString(),
+    ];
+
+    if (hasBillingData) {
+      baseRow.push(
+        active.hasVendaFaturada ? 'Sim' : 'Não',
+        active.isCrossbuyerFaturado ? 'Sim' : 'Não'
+      );
+    }
+
+    baseRow.push(
       ...brandValues,
       ...brandItems,
       formatNumber(active.totalValorVendaAllBrands),
       active.totalItensVendaAllBrands.toString(),
-      inconsistências || '',
-    ];
+      inconsistências || ''
+    );
+
+    return baseRow;
   });
 
   const csv = generateCSV(headers, rows);
-  downloadFile(csv, 'crossbuyers_ativos.csv', 'text/csv;charset=utf-8');
+  downloadFile(csv, 'crossbuyers_venda_registrada.csv', 'text/csv;charset=utf-8');
 }

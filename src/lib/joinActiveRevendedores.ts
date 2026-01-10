@@ -207,16 +207,28 @@ export function joinActiveRevendedores(
       totalItensVendaAllBrands += metrics.totalItensVenda;
     }
 
-    const isCrossbuyer = brands.size >= 2 && existsInBoticario;
+    // Calcular métricas de VENDA REGISTRADA (Tipo=Venda)
+    const hasVendaRegistrada = selectedCiclo ? hasPurchasesInCiclo : (brands.size > 0);
+    const isCrossbuyerRegistrado = brands.size >= 2 && existsInBoticario;
 
-    // hasPurchasesInCiclo deve refletir se teve VENDA no ciclo (ou em qualquer ciclo se não selecionado)
-    // - Com ciclo selecionado: usa o hasPurchasesInCiclo calculado (vendas filtradas por ciclo)
-    // - Sem ciclo selecionado: considera ativo se teve alguma venda (brands.size > 0)
-    const finalHasPurchasesInCiclo = selectedCiclo ? hasPurchasesInCiclo : (brands.size > 0);
+    // Calcular métricas de FATURAMENTO (isFaturado=true)
+    // Contar marcas onde há pelo menos 1 item faturado
+    let brandsWithFaturamento = 0;
+    let hasVendaFaturada = false;
+
+    for (const metrics of brands.values()) {
+      const faturadoItems = metrics.items.filter(item => item.isFaturado === true);
+      if (faturadoItems.length > 0) {
+        brandsWithFaturamento++;
+        hasVendaFaturada = true;
+      }
+    }
+
+    const isCrossbuyerFaturado = brandsWithFaturamento >= 2 && existsInBoticario;
 
     // DEBUG: Log para setores específicos
     if (setor.includes('INICIOS CENTRAL') || setor.includes('PRATA')) {
-      console.log(`[DEBUG SETOR] ${setor}: ${active.nomeRevendedora} | matched=${!!matchedCustomer} | brands=${brands.size} | hasPurchases=${hasPurchasesInCiclo} | final=${finalHasPurchasesInCiclo}`);
+      console.log(`[DEBUG SETOR] ${setor}: ${active.nomeRevendedora} | matched=${!!matchedCustomer} | brands=${brands.size} | registrado=${hasVendaRegistrada} | faturado=${hasVendaFaturada}`);
     }
 
     joined.push({
@@ -231,8 +243,15 @@ export function joinActiveRevendedores(
       totalValorVendaAllBrands,
       totalItensVendaAllBrands,
       existsInBoticario,
-      hasPurchasesInCiclo: finalHasPurchasesInCiclo,
-      isCrossbuyer,
+      // Métricas de Venda Registrada
+      hasVendaRegistrada,
+      isCrossbuyerRegistrado,
+      // Métricas de Faturamento
+      hasVendaFaturada,
+      isCrossbuyerFaturado,
+      // Aliases para compatibilidade
+      hasPurchasesInCiclo: hasVendaRegistrada,
+      isCrossbuyer: isCrossbuyerRegistrado,
       inconsistencies: activeInconsistencies,
     });
   }
@@ -252,11 +271,18 @@ export function joinActiveRevendedores(
 /**
  * Aggregate active revendedores by sector
  *
- * Nova lógica:
- * - totalAtivos = revendedores que tiveram pelo menos 1 VENDA no ciclo (qualquer marca)
- * - ativosBaseBoticario = dos ativos, quantos têm compra no O Boticário
- * - crossbuyers = dos ativos com O Boticário, quantos compram em 2+ marcas
- * - percentCrossbuyer = crossbuyers / ativosBaseBoticario (para refletir painel oficial)
+ * Nova lógica com duas métricas:
+ * 1. VENDA REGISTRADA (captação/pedidos):
+ *    - totalRegistrados = revendedores com venda registrada (Tipo=Venda) no ciclo
+ *    - registradosBaseBoticario = que existem no O Boticário
+ *    - crossbuyersRegistrados = 2+ marcas com venda registrada
+ *
+ * 2. FATURAMENTO (quando disponível):
+ *    - totalFaturados = revendedores com venda faturada no ciclo
+ *    - faturadosBaseBoticario = que existem no O Boticário
+ *    - crossbuyersFaturados = 2+ marcas com venda faturada
+ *
+ * Gap = Registrados - Faturados
  */
 export function aggregateActiveRevendedoresBySector(
   joined: ActiveRevendedorJoined[]
@@ -270,10 +296,24 @@ export function aggregateActiveRevendedoresBySector(
     if (!stats) {
       stats = {
         setor,
+        // Métricas de Venda Registrada
+        totalRegistrados: 0,
+        registradosBaseBoticario: 0,
+        crossbuyersRegistrados: 0,
+        percentCrossbuyerRegistrados: 0,
+        // Métricas de Faturamento
+        totalFaturados: 0,
+        faturadosBaseBoticario: 0,
+        crossbuyersFaturados: 0,
+        percentCrossbuyerFaturados: 0,
+        // Gap Analysis
+        gapRegistradoFaturado: 0,
+        // Aliases para compatibilidade
         totalAtivos: 0,
         ativosBaseBoticario: 0,
         crossbuyers: 0,
         percentCrossbuyer: 0,
+        // Por marca
         valorPorMarca: {
           boticario: 0,
           eudora: 0,
@@ -293,41 +333,68 @@ export function aggregateActiveRevendedoresBySector(
       sectorStats.set(setor, stats);
     }
 
-    // Ativo = teve pelo menos 1 venda no ciclo em qualquer marca
-    // (hasPurchasesInCiclo já está correto - verifica se há vendas em qualquer marca)
-    if (active.hasPurchasesInCiclo) {
-      stats.totalAtivos++;
-    }
-
-    // Sempre adicionar à lista para visualização (mesmo sem vendas no ciclo)
+    // Sempre adicionar à lista para visualização
     stats.activeRevendedores.push(active);
 
-    // Base O Boticário: revendedores ativos que têm compra no O Boticário
-    if (active.hasPurchasesInCiclo && active.existsInBoticario) {
-      stats.ativosBaseBoticario++;
+    // --- VENDA REGISTRADA ---
+    if (active.hasVendaRegistrada) {
+      stats.totalRegistrados++;
+
+      if (active.existsInBoticario) {
+        stats.registradosBaseBoticario++;
+      }
     }
 
-    // Crossbuyer: revendedores com 2+ marcas E que existem no O Boticário
-    if (active.isCrossbuyer) {
-      stats.crossbuyers++;
+    if (active.isCrossbuyerRegistrado) {
+      stats.crossbuyersRegistrados++;
     }
 
-    // Aggregate by brand (apenas se teve vendas)
+    // --- FATURAMENTO ---
+    if (active.hasVendaFaturada) {
+      stats.totalFaturados++;
+
+      if (active.existsInBoticario) {
+        stats.faturadosBaseBoticario++;
+      }
+    }
+
+    if (active.isCrossbuyerFaturado) {
+      stats.crossbuyersFaturados++;
+    }
+
+    // Aggregate by brand (vendas registradas)
     for (const [brandId, metrics] of active.brands.entries()) {
       stats.valorPorMarca[brandId] += metrics.totalValorVenda;
       stats.itensPorMarca[brandId] += metrics.totalItensVenda;
     }
   }
 
-  // Calculate percentages
-  // % Crossbuyer = crossbuyers / ativosBaseBoticario (conforme painel oficial)
+  // Calculate percentages and gap
   for (const stats of sectorStats.values()) {
-    stats.percentCrossbuyer =
-      stats.ativosBaseBoticario > 0 ? (stats.crossbuyers / stats.ativosBaseBoticario) * 100 : 0;
+    // % Crossbuyer Registrados
+    stats.percentCrossbuyerRegistrados =
+      stats.registradosBaseBoticario > 0
+        ? (stats.crossbuyersRegistrados / stats.registradosBaseBoticario) * 100
+        : 0;
+
+    // % Crossbuyer Faturados
+    stats.percentCrossbuyerFaturados =
+      stats.faturadosBaseBoticario > 0
+        ? (stats.crossbuyersFaturados / stats.faturadosBaseBoticario) * 100
+        : 0;
+
+    // Gap
+    stats.gapRegistradoFaturado = stats.totalRegistrados - stats.totalFaturados;
+
+    // Aliases para compatibilidade (apontam para Registrados)
+    stats.totalAtivos = stats.totalRegistrados;
+    stats.ativosBaseBoticario = stats.registradosBaseBoticario;
+    stats.crossbuyers = stats.crossbuyersRegistrados;
+    stats.percentCrossbuyer = stats.percentCrossbuyerRegistrados;
 
     // DEBUG: Log para setores específicos
     if (stats.setor.includes('INICIOS CENTRAL') || stats.setor.includes('PRATA')) {
-      console.log(`[DEBUG AGREGACAO] ${stats.setor}: totalAtivos=${stats.totalAtivos} | totalNaLista=${stats.activeRevendedores.length}`);
+      console.log(`[DEBUG AGREGACAO] ${stats.setor}: registrados=${stats.totalRegistrados} | faturados=${stats.totalFaturados} | gap=${stats.gapRegistradoFaturado}`);
     }
   }
 

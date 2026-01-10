@@ -6,6 +6,8 @@ Aplicação web estática para análise de cross-buyers entre marcas, com suport
 
 Esta aplicação permite analisar revendedores que compram em múltiplas marcas (cross-buyers), cruzando dados de 5 planilhas de marcas com uma 6ª planilha única de revendedores ativos. Todo o processamento ocorre 100% no navegador - nenhum dado é enviado para servidores.
 
+**Novidade:** A aplicação agora diferencia automaticamente entre **Venda Registrada** (captação/pedidos) e **Faturamento** (pedidos efetivamente emitidos), permitindo análise de gap entre métricas de captação e métricas oficiais.
+
 ## 🏗️ Arquitetura
 
 ### Tecnologias
@@ -66,6 +68,11 @@ A aplicação aceita upload de 5 planilhas de marcas, na ordem:
 - `ValorPraticado` / `Valor Praticado` (obrigatória)
 - `MeioCaptacao` / `Meio Captacao`
 - `TipoEntrega` / `Tipo Entrega`
+
+**Colunas Opcionais de Faturamento:**
+- `StatusFaturamento` / `Status Faturamento` / `Status Pedido` / `Faturado`
+- `CicloFaturamento` / `Ciclo Faturamento`
+- `DataFaturamento` / `Data Faturamento` / `Data NF`
 
 **Importante:**
 - Apenas itens com `Tipo="Venda"` são considerados nos cálculos
@@ -140,15 +147,18 @@ O dashboard possui 3 abas:
 - Filtros por marca, ciclo, setor, meio de captação, tipo de entrega
 - Tabela com detalhes por revendedor
 
-#### Aba 2: Ativos no Ciclo (NOVA)
+#### Aba 2: Venda Registrada (por Setor)
 - Tabela por SETOR mostrando:
-  - Total de ativos
-  - Ativos base oBoticário
+  - **Registrados** - Total de revendedores com venda registrada (captação)
+  - **Faturados** - Total de revendedores com venda faturada (quando disponível)
+  - **Gap** - Diferença entre Registrados e Faturados (quando disponível)
+  - Base oBoticário
   - Crossbuyers
   - % crossbuyer
   - Valor / Itens por marca
+- **Tooltip explicativo:** Diferença entre Venda Registrada e Faturamento
 - **Ações:**
-  - Clique no setor → abre drawer com lista de revendedores ativos
+  - Clique no setor → abre drawer com lista de revendedores
   - Clique no revendedor → abre detalhe por marca (já existente)
 
 #### Aba 3: Revendedores Ativos (NOVA)
@@ -236,12 +246,34 @@ npm run preview
 - Deve existir no oBoticário (regra base)
 - Apenas compras do tipo "Venda" são consideradas
 
-### Revendedor Ativo
-- Revendedor presente na **planilha única de ativos**
-- Se a planilha tiver coluna de ciclo:
-  - Ativo = presente na planilha + ciclo selecionado
-- Se NÃO tiver coluna de ciclo:
-  - Ativo = presente na planilha (base geral)
+### Revendedor Ativo (Venda Registrada)
+- Revendedor presente na **planilha única de ativos** E que teve pelo menos 1 **venda registrada** (Tipo=Venda) no ciclo selecionado em qualquer marca
+- **Não é necessário** estar no oBoticário para ser considerado "ativo" - basta ter venda em qualquer marca
+- O requisito de oBoticário só se aplica para identificação de **Crossbuyer**
+
+### Venda Registrada vs Faturamento
+
+A aplicação distingue automaticamente entre duas métricas:
+
+1. **Venda Registrada (Captação):**
+   - Pedidos registrados no sistema (independente de entrega/faturamento)
+   - Detectada pelo campo `Tipo="Venda"` nas planilhas
+   - Métricas: `totalRegistrados`, `crossbuyersRegistrados`
+
+2. **Faturamento (quando disponível):**
+   - Pedidos efetivamente faturados/emitidos
+   - Detectada automaticamente por colunas como `StatusFaturamento`, `Faturado`, etc.
+   - Valores reconhecidos como faturado: "faturado", "aprovado", "concluído", "emitido", "sim", "ok"
+   - Métricas: `totalFaturados`, `crossbuyersFaturados`
+
+3. **Gap Analysis:**
+   - Diferença entre Registrados e Faturados por setor
+   - Ajuda a identificar setores com alto índice de pedidos não convertidos
+
+**Por que pode haver divergência com o painel oficial?**
+- O painel oficial pode usar métricas de **faturamento** (pedidos realmente entregues)
+- Esta aplicação mostra **vendas registradas** (captação) como métrica principal
+- Quando colunas de faturamento estão disponíveis, ambas métricas são exibidas
 
 ### Join Ativos × Marcas
 Ordem de matching (estrita):
@@ -342,6 +374,12 @@ Para dúvidas ou problemas, consulte a documentação acima ou entre em contato 
 
 ---
 
-**Versão:** 2.0.0  
-**Última atualização:** 2024  
+**Versão:** 2.1.0
+**Última atualização:** Janeiro 2026
 **Arquitetura:** 100% estática - Compatível com Render Static Site
+
+**Changelog 2.1.0:**
+- Adicionado suporte a métricas de Faturamento (quando colunas disponíveis)
+- Renomeado "Ativos no Ciclo" para "Venda Registrada" com tooltip explicativo
+- Gap Analysis entre Registrados e Faturados por setor
+- Exportações atualizadas com novos campos de billing

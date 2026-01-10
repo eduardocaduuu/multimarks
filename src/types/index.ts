@@ -66,6 +66,9 @@ export interface RawRow {
   [key: string]: string | number | undefined;
 }
 
+// Status de faturamento
+export type BillingStatus = 'Faturado' | 'Pendente' | 'Cancelado' | 'Desconhecido';
+
 // Normalized item from spreadsheet
 export interface Item {
   setor: string;
@@ -83,6 +86,12 @@ export interface Item {
   tipoEntrega: DeliveryType;
   tipoEntregaOriginal: string;
   brand: BrandId;
+  // Campos opcionais de faturamento (quando disponíveis)
+  statusFaturamento?: BillingStatus;
+  statusFaturamentoOriginal?: string;
+  cicloFaturamento?: string;
+  dataFaturamento?: string;
+  isFaturado?: boolean; // Calculado: true se status indica faturamento confirmado
 }
 
 // Aggregated metrics for a customer per brand
@@ -168,6 +177,10 @@ export interface ColumnMapping {
   valorPraticado: string | null;
   meioCaptacao: string | null;
   tipoEntrega: string | null;
+  // Colunas opcionais de faturamento
+  statusFaturamento: string | null;
+  cicloFaturamento: string | null;
+  dataFaturamento: string | null;
 }
 
 // Parsing result
@@ -177,6 +190,9 @@ export interface ParseResult {
   errors: string[];
   warnings: string[];
   rowCount: number;
+  // Informações sobre colunas de faturamento detectadas
+  hasBillingColumns: boolean;
+  billingColumnsDetected: string[]; // Nomes das colunas de faturamento encontradas
 }
 
 // Processing result
@@ -197,9 +213,25 @@ export interface ProcessingResult {
     sectorStats: SectorActiveStats[];
     selectedCiclo: string | null; // Selected ciclo for filtering
     availableCiclosFromActive: string[]; // Ciclos available in active file
-    totalAtivos: number;
-    totalAtivosBaseBoticario: number;
-    totalCrossbuyersAtivos: number;
+
+    // Métricas de Venda Registrada
+    totalRegistrados: number;
+    totalRegistradosBaseBoticario: number;
+    totalCrossbuyersRegistrados: number;
+
+    // Métricas de Faturamento (quando disponível)
+    totalFaturados: number;
+    totalFaturadosBaseBoticario: number;
+    totalCrossbuyersFaturados: number;
+
+    // Flag indicando se dados de faturamento estão disponíveis
+    hasBillingData: boolean;
+
+    // Aliases para compatibilidade
+    totalAtivos: number; // = totalRegistrados
+    totalAtivosBaseBoticario: number; // = totalRegistradosBaseBoticario
+    totalCrossbuyersAtivos: number; // = totalCrossbuyersRegistrados
+
     inconsistencies: string[]; // Global inconsistencies
     diagnosticoJoin?: JoinDiagnostico; // Diagnóstico de exclusões no join
   };
@@ -226,20 +258,28 @@ export interface ActiveRevendedorJoined {
   nomeRevendedoraNormalized: string;
   setor: string; // From active file (authoritative)
   cicloCaptacao: string | null;
-  
+
   // From brand purchases (filtered by selected ciclo)
   brands: Map<BrandId, CustomerBrandMetrics>;
   brandCount: number;
-  
+
   // Aggregated metrics (only Venda type)
   totalValorVendaAllBrands: number; // In cents
   totalItensVendaAllBrands: number;
-  
-  // Flags
-  existsInBoticario: boolean; // Must exist in oBoticário to be valid
-  hasPurchasesInCiclo: boolean; // Has purchases in selected ciclo
-  isCrossbuyer: boolean; // Has 2+ brands
-  
+
+  // Flags - Venda Registrada
+  existsInBoticario: boolean; // Existe no oBoticário
+  hasVendaRegistrada: boolean; // Tem venda registrada no ciclo (qualquer marca)
+  isCrossbuyerRegistrado: boolean; // Crossbuyer entre vendas registradas
+
+  // Flags - Faturamento (quando disponível)
+  hasVendaFaturada: boolean; // Tem venda faturada no ciclo
+  isCrossbuyerFaturado: boolean; // Crossbuyer entre vendas faturadas
+
+  // Aliases para compatibilidade
+  hasPurchasesInCiclo: boolean; // = hasVendaRegistrada
+  isCrossbuyer: boolean; // = isCrossbuyerRegistrado
+
   // Inconsistencies
   inconsistencies: string[]; // e.g., "Setor divergente", "Sem compras no ciclo"
 }
@@ -247,15 +287,32 @@ export interface ActiveRevendedorJoined {
 // Sector statistics for active revendedores
 export interface SectorActiveStats {
   setor: string;
-  totalAtivos: number; // Total active revendedores in this sector
-  ativosBaseBoticario: number; // Active revendedores that exist in oBoticário
-  crossbuyers: number; // Active crossbuyers in this sector
-  percentCrossbuyer: number; // Percentage of crossbuyers
-  
-  // Value and items by brand
+
+  // Métricas de VENDA REGISTRADA (captação/pedidos)
+  totalRegistrados: number; // Revendedores com venda registrada no ciclo
+  registradosBaseBoticario: number; // Que existem no oBoticário
+  crossbuyersRegistrados: number; // Crossbuyers entre os registrados
+  percentCrossbuyerRegistrados: number;
+
+  // Métricas de FATURAMENTO (quando disponível)
+  totalFaturados: number; // Revendedores com venda faturada no ciclo
+  faturadosBaseBoticario: number;
+  crossbuyersFaturados: number;
+  percentCrossbuyerFaturados: number;
+
+  // Gap Analysis
+  gapRegistradoFaturado: number; // totalRegistrados - totalFaturados
+
+  // Aliases para compatibilidade (apontam para Registrados)
+  totalAtivos: number; // = totalRegistrados
+  ativosBaseBoticario: number; // = registradosBaseBoticario
+  crossbuyers: number; // = crossbuyersRegistrados
+  percentCrossbuyer: number; // = percentCrossbuyerRegistrados
+
+  // Value and items by brand (de vendas registradas)
   valorPorMarca: Record<BrandId, number>; // In cents
   itensPorMarca: Record<BrandId, number>;
-  
+
   // List of active revendedores in this sector
   activeRevendedores: ActiveRevendedorJoined[];
 }

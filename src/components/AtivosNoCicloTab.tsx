@@ -32,6 +32,7 @@ interface AtivosNoCicloTabProps {
     excluidosPorCodigoDuplicado: number;
     registrosValidos: number;
   };
+  hasBillingData?: boolean;
 }
 
 export function AtivosNoCicloTab({
@@ -40,6 +41,7 @@ export function AtivosNoCicloTab({
   onRevendedorClick,
   diagnosticoJoin,
   diagnosticoParsing,
+  hasBillingData = false,
 }: AtivosNoCicloTabProps) {
   const [selectedSector, setSelectedSector] = useState<string | null>(null);
   const [searchSetor, setSearchSetor] = useState('');
@@ -77,12 +79,33 @@ export function AtivosNoCicloTab({
     <div>
       {/* Header info */}
       <div className="flex items-center justify-between mb-6">
-        <p className="text-muted-foreground">
-          Visualização por setor dos revendedores ativos
-          {selectedCiclo && (
-            <span className="font-medium text-foreground"> • Ciclo: {selectedCiclo}</span>
-          )}
-        </p>
+        <div className="flex items-start gap-2">
+          <p className="text-muted-foreground">
+            Revendedores com Venda Registrada
+            {selectedCiclo && (
+              <span className="font-medium text-foreground"> • Ciclo: {selectedCiclo}</span>
+            )}
+          </p>
+          <div className="group relative">
+            <Info className="w-4 h-4 text-muted-foreground cursor-help" />
+            <div className="invisible group-hover:visible absolute left-0 top-6 z-50 w-80 p-3 bg-popover text-popover-foreground rounded-md shadow-lg border text-xs">
+              <p className="font-medium mb-1">Venda Registrada vs Faturamento</p>
+              <p className="mb-2">
+                Esta aba mostra revendedores com <strong>vendas registradas</strong> (captação/pedidos).
+                O painel oficial pode usar métricas de <strong>faturamento</strong> (pedidos efetivamente
+                emitidos/entregues), o que pode gerar pequenas divergências.
+              </p>
+              {hasBillingData ? (
+                <p className="text-emerald-600">✓ Dados de faturamento disponíveis nesta análise.</p>
+              ) : (
+                <p className="text-amber-600">
+                  ⚠ Dados de faturamento não detectados nas planilhas.
+                  Para análise de faturamento, inclua colunas como "Status Faturamento" ou "Faturado".
+                </p>
+              )}
+            </div>
+          </div>
+        </div>
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button variant="outline" className="gap-2">
@@ -206,7 +229,7 @@ export function AtivosNoCicloTab({
       </div>
 
       {/* Summary stats */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+      <div className={`grid grid-cols-1 gap-4 mb-6 ${hasBillingData ? 'md:grid-cols-6' : 'md:grid-cols-4'}`}>
         <Card>
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-medium text-muted-foreground">
@@ -224,18 +247,54 @@ export function AtivosNoCicloTab({
         <Card>
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-medium text-muted-foreground">
-              Total de Ativos
+              Venda Registrada
             </CardTitle>
           </CardHeader>
           <CardContent>
             <div className="flex items-center gap-2">
               <Users className="w-5 h-5 text-muted-foreground" />
               <span className="text-2xl font-bold">
-                {sectorStats.reduce((sum, s) => sum + s.totalAtivos, 0).toLocaleString('pt-BR')}
+                {sectorStats.reduce((sum, s) => sum + s.totalRegistrados, 0).toLocaleString('pt-BR')}
               </span>
             </div>
           </CardContent>
         </Card>
+
+        {hasBillingData && (
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-medium text-muted-foreground">
+                Faturados
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="flex items-center gap-2">
+                <Users className="w-5 h-5 text-emerald-600" />
+                <span className="text-2xl font-bold">
+                  {sectorStats.reduce((sum, s) => sum + s.totalFaturados, 0).toLocaleString('pt-BR')}
+                </span>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
+        {hasBillingData && (
+          <Card className="border-amber-200 bg-amber-50/50">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-medium text-amber-700">
+                Gap (Reg. - Fat.)
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="flex items-center gap-2">
+                <AlertCircle className="w-5 h-5 text-amber-600" />
+                <span className="text-2xl font-bold text-amber-700">
+                  {sectorStats.reduce((sum, s) => sum + s.gapRegistradoFaturado, 0).toLocaleString('pt-BR')}
+                </span>
+              </div>
+            </CardContent>
+          </Card>
+        )}
 
         <Card>
           <CardHeader className="pb-2">
@@ -247,7 +306,7 @@ export function AtivosNoCicloTab({
             <div className="flex items-center gap-2">
               <Users className="w-5 h-5 text-boticario" />
               <span className="text-2xl font-bold">
-                {sectorStats.reduce((sum, s) => sum + s.ativosBaseBoticario, 0).toLocaleString('pt-BR')}
+                {sectorStats.reduce((sum, s) => sum + s.registradosBaseBoticario, 0).toLocaleString('pt-BR')}
               </span>
             </div>
           </CardContent>
@@ -263,7 +322,7 @@ export function AtivosNoCicloTab({
             <div className="flex items-center gap-2">
               <TrendingUp className="w-5 h-5 text-emerald-500" />
               <span className="text-2xl font-bold">
-                {sectorStats.reduce((sum, s) => sum + s.crossbuyers, 0).toLocaleString('pt-BR')}
+                {sectorStats.reduce((sum, s) => sum + s.crossbuyersRegistrados, 0).toLocaleString('pt-BR')}
               </span>
             </div>
           </CardContent>
@@ -273,7 +332,7 @@ export function AtivosNoCicloTab({
       {/* Sectors table */}
       <Card>
         <CardHeader>
-          <CardTitle>Ativos por Setor</CardTitle>
+          <CardTitle>Revendedores por Setor</CardTitle>
         </CardHeader>
         <CardContent>
           <div className="overflow-x-auto">
@@ -281,12 +340,18 @@ export function AtivosNoCicloTab({
               <thead>
                 <tr className="border-b border-border">
                   <th className="text-left py-3 px-4 font-medium text-sm">Setor</th>
-                  <th className="text-right py-3 px-4 font-medium text-sm">Total Ativos</th>
+                  <th className="text-right py-3 px-4 font-medium text-sm">Registrados</th>
+                  {hasBillingData && (
+                    <th className="text-right py-3 px-4 font-medium text-sm">Faturados</th>
+                  )}
+                  {hasBillingData && (
+                    <th className="text-right py-3 px-4 font-medium text-sm text-amber-700">Gap</th>
+                  )}
                   <th className="text-right py-3 px-4 font-medium text-sm">Base oBoticário</th>
                   <th className="text-right py-3 px-4 font-medium text-sm">Crossbuyers</th>
-                  <th className="text-right py-3 px-4 font-medium text-sm">% Crossbuyer</th>
+                  <th className="text-right py-3 px-4 font-medium text-sm">% CB</th>
                   <th className="text-right py-3 px-4 font-medium text-sm">Valor Total</th>
-                  <th className="text-right py-3 px-4 font-medium text-sm">Itens Total</th>
+                  <th className="text-right py-3 px-4 font-medium text-sm">Itens</th>
                   <th className="text-center py-3 px-4 font-medium text-sm">Ações</th>
                 </tr>
               </thead>
@@ -298,23 +363,35 @@ export function AtivosNoCicloTab({
                   >
                     <td className="py-3 px-4 font-medium">{sector.setor}</td>
                     <td className="py-3 px-4 text-right">
-                      {sector.totalAtivos.toLocaleString('pt-BR')}
+                      {sector.totalRegistrados.toLocaleString('pt-BR')}
                     </td>
+                    {hasBillingData && (
+                      <td className="py-3 px-4 text-right text-emerald-600">
+                        {sector.totalFaturados.toLocaleString('pt-BR')}
+                      </td>
+                    )}
+                    {hasBillingData && (
+                      <td className="py-3 px-4 text-right">
+                        <span className={sector.gapRegistradoFaturado > 0 ? 'text-amber-600 font-medium' : 'text-muted-foreground'}>
+                          {sector.gapRegistradoFaturado > 0 ? '+' : ''}{sector.gapRegistradoFaturado.toLocaleString('pt-BR')}
+                        </span>
+                      </td>
+                    )}
                     <td className="py-3 px-4 text-right">
-                      <span className={sector.ativosBaseBoticario === 0 ? 'text-muted-foreground' : ''}>
-                        {sector.ativosBaseBoticario.toLocaleString('pt-BR')}
+                      <span className={sector.registradosBaseBoticario === 0 ? 'text-muted-foreground' : ''}>
+                        {sector.registradosBaseBoticario.toLocaleString('pt-BR')}
                       </span>
                     </td>
                     <td className="py-3 px-4 text-right">
                       <Badge
-                        variant={sector.crossbuyers > 0 ? 'default' : 'secondary'}
-                        className={sector.crossbuyers > 0 ? 'bg-emerald-500' : ''}
+                        variant={sector.crossbuyersRegistrados > 0 ? 'default' : 'secondary'}
+                        className={sector.crossbuyersRegistrados > 0 ? 'bg-emerald-500' : ''}
                       >
-                        {sector.crossbuyers.toLocaleString('pt-BR')}
+                        {sector.crossbuyersRegistrados.toLocaleString('pt-BR')}
                       </Badge>
                     </td>
                     <td className="py-3 px-4 text-right">
-                      {sector.percentCrossbuyer.toFixed(1)}%
+                      {sector.percentCrossbuyerRegistrados.toFixed(1)}%
                     </td>
                     <td className="py-3 px-4 text-right">
                       {formatCurrency(
@@ -355,9 +432,10 @@ export function AtivosNoCicloTab({
             <DialogDescription>
               {selectedSectorStats && (
                 <>
-                  {selectedSectorStats.totalAtivos} revendedores ativos •{' '}
-                  {selectedSectorStats.ativosBaseBoticario} base oBoticário •{' '}
-                  {selectedSectorStats.crossbuyers} crossbuyers ({selectedSectorStats.percentCrossbuyer.toFixed(1)}%)
+                  {selectedSectorStats.totalRegistrados} com venda registrada •{' '}
+                  {hasBillingData && <>{selectedSectorStats.totalFaturados} faturados • </>}
+                  {selectedSectorStats.registradosBaseBoticario} base oBoticário •{' '}
+                  {selectedSectorStats.crossbuyersRegistrados} crossbuyers ({selectedSectorStats.percentCrossbuyerRegistrados.toFixed(1)}%)
                 </>
               )}
             </DialogDescription>
@@ -389,7 +467,7 @@ export function AtivosNoCicloTab({
 
               {/* Revendedores list */}
               <div>
-                <h4 className="font-medium mb-2">Revendedores Ativos</h4>
+                <h4 className="font-medium mb-2">Revendedores com Venda Registrada</h4>
                 <div className="space-y-2 max-h-[400px] overflow-y-auto">
                   {selectedSectorRevendedores.map((active) => (
                     <Card
@@ -416,12 +494,17 @@ export function AtivosNoCicloTab({
                                 Base oBoticário
                               </Badge>
                             )}
-                            {active.isCrossbuyer && (
+                            {active.isCrossbuyerRegistrado && (
                               <Badge variant="default" className="bg-emerald-500">
                                 Crossbuyer ({active.brandCount} marcas)
                               </Badge>
                             )}
-                            {!active.hasPurchasesInCiclo && (
+                            {active.hasVendaFaturada && (
+                              <Badge variant="outline" className="text-emerald-600 border-emerald-300">
+                                Faturado
+                              </Badge>
+                            )}
+                            {!active.hasVendaRegistrada && (
                               <Badge variant="outline" className="text-muted-foreground">
                                 Sem vendas no ciclo
                               </Badge>

@@ -5,6 +5,7 @@ import {
   ParseResult,
   TransactionType,
   DeliveryType,
+  BillingStatus,
   RawRow,
   BRANDS,
 } from '@/types';
@@ -51,6 +52,68 @@ function normalizeDeliveryType(value: string | undefined | null): { normalized: 
 }
 
 /**
+ * Normalize billing status
+ * Detecta se o pedido foi faturado com base em várias nomenclaturas possíveis
+ */
+function normalizeBillingStatus(value: string | undefined | null): {
+  status: BillingStatus;
+  original: string;
+  isFaturado: boolean;
+} {
+  const original = value?.toString().trim() || '';
+  if (!original) return { status: 'Desconhecido', original: '', isFaturado: false };
+
+  const lower = original.toLowerCase();
+
+  // Padrões que indicam FATURADO
+  const faturadoPatterns = [
+    'faturado', 'faturada', 'fat',
+    'aprovado', 'aprovada',
+    'concluido', 'concluída', 'concluida',
+    'finalizado', 'finalizada',
+    'emitido', 'emitida',
+    'processado', 'processada',
+    'ok', 'sim', 'yes', 's', 'y', '1', 'true',
+  ];
+
+  // Padrões que indicam PENDENTE
+  const pendentePatterns = [
+    'pendente', 'aguardando', 'em processamento', 'em processo',
+    'aberto', 'aberta', 'novo', 'nova',
+    'analise', 'análise', 'em analise',
+  ];
+
+  // Padrões que indicam CANCELADO
+  const canceladoPatterns = [
+    'cancelado', 'cancelada', 'cancel',
+    'estornado', 'estornada', 'estorno',
+    'devolvido', 'devolvida', 'devolucao', 'devolução',
+    'rejeitado', 'rejeitada',
+    'nao', 'não', 'no', 'n', '0', 'false',
+  ];
+
+  for (const pattern of faturadoPatterns) {
+    if (lower.includes(pattern) || lower === pattern) {
+      return { status: 'Faturado', original, isFaturado: true };
+    }
+  }
+
+  for (const pattern of canceladoPatterns) {
+    if (lower.includes(pattern) || lower === pattern) {
+      return { status: 'Cancelado', original, isFaturado: false };
+    }
+  }
+
+  for (const pattern of pendentePatterns) {
+    if (lower.includes(pattern) || lower === pattern) {
+      return { status: 'Pendente', original, isFaturado: false };
+    }
+  }
+
+  return { status: 'Desconhecido', original, isFaturado: false };
+}
+
+/**
  * Parse a file (xlsx or csv) and extract items
  */
 export async function parseFile(file: File, brandId: BrandId): Promise<ParseResult> {
@@ -60,6 +123,8 @@ export async function parseFile(file: File, brandId: BrandId): Promise<ParseResu
     errors: [],
     warnings: [],
     rowCount: 0,
+    hasBillingColumns: false,
+    billingColumnsDetected: [],
   };
 
   try {
@@ -87,9 +152,16 @@ export async function parseFile(file: File, brandId: BrandId): Promise<ParseResu
     const headers = Object.keys(jsonData[0]);
 
     // Map columns
-    const { mapping, missingRequired, warnings: mappingWarnings } = mapColumns(headers);
+    const { mapping, missingRequired, warnings: mappingWarnings, billingColumnsDetected } = mapColumns(headers);
 
     result.warnings.push(...mappingWarnings);
+    result.billingColumnsDetected = billingColumnsDetected;
+    result.hasBillingColumns = billingColumnsDetected.length > 0;
+
+    // Log billing columns detection
+    if (result.hasBillingColumns) {
+      console.log(`[BILLING] ${BRANDS[brandId].name}: Colunas de faturamento detectadas:`, billingColumnsDetected);
+    }
 
     if (missingRequired.length > 0) {
       const brandName = BRANDS[brandId].name;
@@ -106,7 +178,7 @@ export async function parseFile(file: File, brandId: BrandId): Promise<ParseResu
       const rowNum = i + 2; // +2 because Excel is 1-indexed and has header row
 
       try {
-        const item = parseRow(row, mapping, brandId);
+        const item = parseRow(row, mapping, brandId, result.hasBillingColumns);
 
         // Validate essential fields
         if (!item.nomeRevendedoraNormalized) {
@@ -139,7 +211,8 @@ export async function parseFile(file: File, brandId: BrandId): Promise<ParseResu
 function parseRow(
   row: RawRow,
   mapping: ReturnType<typeof mapColumns>['mapping'],
-  brandId: BrandId
+  brandId: BrandId,
+  hasBillingColumns: boolean
 ): Item {
   const getValue = (key: keyof typeof mapping): string => {
     const colName = mapping[key];
@@ -152,7 +225,8 @@ function parseRow(
   const tipoOriginal = getValue('tipo').trim();
   const deliveryInfo = normalizeDeliveryType(getValue('tipoEntrega'));
 
-  return {
+  // Base item
+  const item: Item = {
     setor: getValue('setor').trim() || 'Não informado',
     nomeRevendedora: nomeOriginal,
     nomeRevendedoraOriginal: nomeOriginal,
@@ -169,6 +243,29 @@ function parseRow(
     tipoEntregaOriginal: deliveryInfo.original || 'Não informado',
     brand: brandId,
   };
+
+  // Process billing fields if available
+  if (hasBillingColumns) {
+    const statusFaturamentoRaw = getValue('statusFaturamento');
+    if (statusFaturamentoRaw) {
+      const billingInfo = normalizeBillingStatus(statusFaturamentoRaw);
+      item.statusFaturamento = billingInfo.status;
+      item.statusFaturamentoOriginal = billingInfo.original;
+      item.isFaturado = billingInfo.isFaturado;
+    }
+
+    const cicloFaturamentoRaw = getValue('cicloFaturamento');
+    if (cicloFaturamentoRaw) {
+      item.cicloFaturamento = cicloFaturamentoRaw.trim();
+    }
+
+    const dataFaturamentoRaw = getValue('dataFaturamento');
+    if (dataFaturamentoRaw) {
+      item.dataFaturamento = dataFaturamentoRaw.trim();
+    }
+  }
+
+  return item;
 }
 
 /**
