@@ -265,20 +265,23 @@ export function processAllBrands(
     }
 
     // Verificar cada planilha de marca
+    // NOTA: Não filtramos por ciclo aqui - o ativo já foi definido pela planilha Geral
+    // Apenas verificamos se o ativo aparece nas planilhas de marca (por nome)
     for (const brandId of BRAND_ORDER) {
       const items = brandItems.get(brandId) || [];
+
+      console.log(`[MARCA ${brandId}] Total items: ${items.length}`);
+      let matchCount = 0;
 
       for (const item of items) {
         // Apenas Tipo=Venda
         if (item.tipo !== 'Venda') continue;
 
-        // Verificar se o ciclo bate (usar cicloCaptacao como fallback se não tiver cicloFaturamento)
-        const itemCiclo = item.cicloCaptacao; // Nas planilhas de marca, usar cicloCaptacao
-        if (itemCiclo !== selectedCiclo) continue;
-
         // Tentar encontrar o ativo por nome normalizado
         const ativo = ativosByNome.get(item.nomeRevendedoraNormalized);
         if (!ativo) continue; // Não é ativo, ignorar
+
+        matchCount++;
 
         // Registrar a marca
         const enriquecido = ativosEnriquecidos.get(ativo.codigoRevendedora);
@@ -294,6 +297,8 @@ export function processAllBrands(
           );
         }
       }
+
+      console.log(`[MARCA ${brandId}] Matches com ativos: ${matchCount}`);
     }
 
     // PASSO 3: Agregar por setor
